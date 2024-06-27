@@ -1,2 +1,410 @@
-# optionedge-api-flattrade
-.Net client library for FlatTrade REST Api
+# .Net library for FlatTrade REST API 
+Client library to communicate with [FlatTrade REST API]([https://v2api.aliceblueonline.com/introduction](https://pi.flattrade.in/)).
+
+#WARNING: LIBRARY CURRENTLY UNDER DEVELOPMENT
+
+OptionEdge FlatTrade C# client library provides simpler interface to connect to FlatTrade REST Api and live streaming services.
+
+# Disclaimer
+```
+This software is an unofficial client libray for FlatTrade REST Api and 
+is not affiliated with / endorsed or approved by FlatTrade in any way.
+
+This is purely an enthusiast program intended for educational purposes only and 
+is not financial advice.
+
+By downloading this software you acknowledge that you are using this 
+at your own risk and that I am is not responsible for any damages that 
+may occur to you due to the usage or installation of this program
+```
+
+## Refer to this video for free course on Algo Trading using broker APIs
+[Algo Trading Course](https://www.youtube.com/watch?v=o_WqyKSURr8)
+
+
+## Requirements
+
+This library targets `netstandard2.0` and can be used with `.Net Core 2.0 and above` & `.Net Framework 4.6 and above`.
+
+## Getting Started
+
+TODO
+
+## Troubleshooting
+While creating the instance of FlatTrade REST Api Client set enable logging parameter as true. Client library will log all the error/info messages to the console. This will help to troubleshoot any issues while integrating library with your project. You can disable this flag in production.
+
+## Install library
+
+```
+Install-Package OptionEdge.API.FlatTrade -Version 1.0.0
+```
+
+## Sample project
+Please refer the sample `FeaturesDemo.cs` class in `OptionEdge.API.FlatTrade.Samples' project which demonstrate the capabilities of this library. 
+
+## Getting Started guide on Youtube
+Please refer this [Youtube](https://www.youtube.com/channel/UChp2hjl-OgGpHKCrwJPohEQ) video to get started using the library by creating a new project and calling the provided methods from the library for placing orders, getting order & trade history, historical data & live quotes. 
+
+## Import namespaces
+```csharp
+using OptionEdge.API.FlatTrade;
+using OptionEdge.API.FlatTrade.Records;
+```
+
+## Declare variables
+```csharp
+FlatTrade _flatTrade;
+Ticker _ticker;
+
+string _cachedTokenFile = $"cached_token_{DateTime.Now.ToString("dd_mmm_yyyy")}.txt";
+```
+
+## Initialize
+
+```csharp
+       
+// Create new instance of FlatTrade client library
+var_flatTrade = new FlatTrade(_settings.UserId, _settings.ApiKey, enableLogging: _settings.EnableLogging,
+    onAccessTokenGenerated: (accessToken) =>
+{
+    // Store the generated access token to database or file store
+    // Token needs to be generated only once for the day
+
+    File.WriteAllText(_cachedTokenFile, accessToken);
+}, cachedAccessTokenProvider: () =>
+{
+    // Provide the saved token that will be used to making the REST calls.
+    // This method will be used when re-initializing the api client during the the day (eg after app restart etc)
+
+    // If token is invalid or not available, just return empty or null value
+    return File.Exists(_cachedTokenFile) ? File.ReadAllText(_cachedTokenFile) : null;
+});
+```
+
+## Live Feeds Data Streaming
+```csharp
+// Create Ticker instance
+// No need to provide the userId, apiKey, it will be automatically set
+var _ticker = _flatTrade.CreateTicker();
+
+// Setup event handlers
+_ticker.OnTick += _ticker_OnTick;
+_ticker.OnConnect += _ticker_OnConnect;
+_ticker.OnClose += _ticker_OnClose;
+_ticker.OnError += _ticker_OnError;
+_ticker.OnNoReconnect += _ticker_OnNoReconnect;
+_ticker.OnReconnect += _ticker_OnReconnect;
+_ticker.OnReady += _ticker_OnReady;
+
+// Connect the ticker to start receiving the live feeds
+// DO NOT FORGOT TO CONNECT else you will not receive any feed
+_ticker.Connect();
+```
+
+### Subscribe for live feeds
+```csharp
+// Once connected, subscribe to tokens to start receiving the feeds
+
+// Subscribe live feeds
+// Set feed mode to Quote (no depth data will be received)
+// Set feed mode to Full to get depth data as well
+// Token for multiple exchnages in one call
+_ticker.Subscribe(Constants.TICK_MODE_QUOTE,
+    new SubscriptionToken[]
+        {
+            new SubscriptionToken
+            {
+                Token = 26000,
+                Exchange = Constants.EXCHANGE_NSE
+            },
+            new SubscriptionToken
+            {
+                Token = 26009,
+                Exchange = Constants.EXCHANGE_NSE
+            },
+            new SubscriptionToken
+            {
+                Token = 35042,
+                Exchange = Constants.EXCHANGE_NFO
+            }
+        });
+```
+
+
+```csharp
+// or subscribe to tokens for specific exchange
+_ticker.Subscribe(Constants.EXCHANGE_NSE, Constants.TICK_MODE_FULL, new int[] { 26000, 26009 });
+```
+
+### Unsubscribe from live feeds
+```csharp
+// To unscubscribe
+// tokens for multiple exchanges in one call
+_ticker.UnSubscribe(new SubscriptionToken[]
+{
+    new SubscriptionToken
+    {
+        Token = 35042,
+        Exchange = Constants.EXCHANGE_NFO
+    },
+    new SubscriptionToken
+    {
+        Token = 26000,
+        Exchange  = Constants.EXCHANGE_NSE
+    } 
+});
+```
+
+```csharp
+// or unsubscribe tokens from specific exchange
+_ticker.UnSubscribe(Constants.EXCHANGE_NFO, new int[] { 26000, 26000 });
+```
+
+### Auto Reconnect
+```csharp
+// Ticker has built in re-connection mechanism
+// Once disconnectd it will try to reconnect, once connected, it will automatically subscribe to
+// previously subscribed tokens
+
+// Reconnection settings
+_ticker.EnableReconnect(interval: 5, retries: 20);
+// interval: interval between re-connection retries.
+// For every reconnect attempt OnReconnect event will be called
+
+// retries: number of retries before it give up reconnecting.
+// OnNoReconnect will be called if not able to reconnect
+```
+
+## Download Master Contracts
+```csharp
+_flatTrade.SaveMasterContracts(Constants.EXCHANGE_NFO, $"c:\\data\\master_contracts_{Constants.EXCHANGE_NFO}.csv");
+
+// or load Master Contracts into list
+var masterContracts = _flatTrade.GetMasterContracts(Constants.EXCHANGE_NFO);
+```
+
+## Account Details
+```csharp
+var accountDetails = _flatTrade.GetAccountDetails();
+```
+
+## Funds
+```csharp
+var funds = _flatTrade.GetFunds();
+```
+
+
+## Historical Data
+
+```csharp
+var historicalCandles = _flatTrade.GetHistoricalData(
+    Constants.EXCHANGE_NFO,
+    36257,
+    DateTime.Parse("6-Sep-2022 9:30 AM"),
+    DateTime.Parse("8-Sep-2022 3:30 PM"),
+    Constants.HISTORICAL_DATA_RESOLUTION_1_MINUTE);
+```
+
+## Holdings
+```csharp
+var holdings = _flatTrade.GetHoldings();
+```
+
+## Open Interest
+```csharp
+var openInterest = _flatTrade.GetOpenInterest(new OpenInterestParams
+{
+    OpenInterestTokens = new[]
+    {
+        new OpenInterestToken
+        {
+            Exchange = Constants.EXCHANGE_NFO,
+            InstrumentToken = 36257
+        }
+    },
+    UserId = _settings.UserId
+});
+```
+
+```csharp
+// or pass tokens for specific exchange
+var openInterestNFO = _flatTrade.GetOpenInterest(Constants.EXCHANGE_NFO, new[] { 12345, 43343, 5432 });
+```
+
+## Scrip Quote
+```csharp
+var scripQuote = _flatTrade.GetScripQuote(Constants.EXCHANGE_NFO, 36257);
+```
+
+## Order Book
+```csharp
+var orderBook = _flatTrade.GetOrderBook();
+```
+
+## Trade Book
+```csharp
+var tradeBook = _flatTrade.GetTradeBook();
+```
+
+## Order History
+```csharp
+var orderHistory = _flatTrade.GetOrderHistory(orderNumber: "123456789");
+```
+
+## Day/net wise Position Book
+```csharp
+var positionBookDayWise = _flatTrade.GetPositionBookDayWise();
+var positionBookNetWise = _flatTrade.GetPositionBookNetWise();
+```
+
+## Place Order - Regular
+```csharp
+var placeRegularOrderResult = _flatTrade.PlaceOrder(new PlaceRegularOrderParams
+{
+    Exchange = Constants.EXCHANGE_NFO,
+    OrderTag = "Test",
+    PriceType = Constants.PRICE_TYPE_MARKET,
+    ProductCode = Constants.PRODUCT_CODE_MIS,
+    Quantity = 25,
+    TransactionType = Constants.TRANSACTION_TYPE_BUY,
+    InstrumentToken = 46335,
+    TradingSymbol = "BANKNIFTY2290838000PE"
+});
+```
+
+## Place Order - Cover
+```csharp
+var placeCoverOrderResult = _flatTrade.PlaceCoverOrder(new PlaceCoverOrderParams
+{
+    Exchange = Constants.EXCHANGE_NSE,
+    OrderTag = "Test",
+    PriceType = Constants.PRICE_TYPE_LIMIT,
+    ProductCode = Constants.PRODUCT_CODE_MIS,
+    TransactionType = Constants.TRANSACTION_TYPE_BUY,
+    InstrumentToken = 2885,
+    TradingSymbol = "RELIANCE-EQ",
+    Quantity = 1,
+    Price = 2560m,
+    TriggerPrice = 2559m,
+    StopLoss = 2545m
+});
+```
+
+## Place Order - Bracket
+```csharp
+var placeBracketOrderResult = _flatTrade.PlaceBracketOrder(new PlaceBracketOrderParams
+{
+    Exchange = Constants.EXCHANGE_NSE,
+    OrderTag = "Test",
+    PriceType = Constants.PRICE_TYPE_LIMIT,
+    ProductCode = Constants.PRODUCT_CODE_MIS,
+    TransactionType = Constants.TRANSACTION_TYPE_BUY,
+    InstrumentToken = 2885,
+    TradingSymbol = "RELIANCE-EQ",
+    Quantity = 1,
+    Price = 2560m,
+    TriggerPrice = 2559m,
+    StopLoss = 2545m,
+    Target = 2590m,
+});
+```
+
+## Modify Order
+```csharp
+if (placeRegularOrderResult != null && placeRegularOrderResult.Status == Constants.STATUS_OK)
+{
+    Console.WriteLine($"Order executed. Order Number: {placeRegularOrderResult.OrderNumber}");
+
+    // Get the status of the order
+    var orderStatus = _flatTrade.ModifyOrder(new ModifyOrderParams
+    {
+        Exchange = Constants.EXCHANGE_NFO,
+        OrderNumber = placeRegularOrderResult.OrderNumber,
+        Price = .5m,
+        PriceType = Constants.PRICE_TYPE_LIMIT,
+        ProductCode = Constants.PRODUCT_CODE_MIS,
+        Qty = 25,
+        TradingSymbol = "BANKNIFTY2290838000PE",
+        TransactionType = Constants.TRANSACTION_TYPE_SELL,
+    });
+}
+```
+
+
+## Cancel Order
+```csharp
+if (placeRegularOrderResult != null && placeRegularOrderResult.Status == Constants.STATUS_OK)
+{
+    Console.WriteLine($"Order executed. Order Number: {placeRegularOrderResult.OrderNumber}");
+
+    var orderStatus = _flatTrade.CancelOrder(placeRegularOrderResult.OrderNumber);
+}
+```
+
+## Web Socket event handlers
+```csharp
+private void _ticker_OnReady()
+{
+    Console.WriteLine("Socket connection authenticated. Ready to live stream feeds.");
+}
+
+private static void _ticker_OnTick(Tick TickData)
+{
+    Console.WriteLine(JsonConvert.SerializeObject(TickData));
+}
+
+private static void _ticker_OnReconnect()
+{
+    Console.WriteLine("Ticker reconnecting.");
+}
+
+private static void _ticker_OnNoReconnect()
+{
+    Console.WriteLine("Ticker not reconnected.");
+}
+
+private static void _ticker_OnError(string Message)
+{
+    Console.WriteLine("Ticker error." + Message);
+}
+
+private static void _ticker_OnClose()
+{
+    Console.WriteLine("Ticker closed.");
+}
+
+private static void _ticker_OnConnect()
+{
+    Console.WriteLine("Ticker connected.");
+
+    _ticker.Subscribe(new SubscriptionToken[]
+    {
+        new SubscriptionToken
+        {
+            Exchange = Constants.EXCHANGE_NSE,
+            Token = 26000
+        },
+        new SubscriptionToken
+        {
+            Exchange = Constants.EXCHANGE_NSE,
+            Token = 26009
+        },
+        new SubscriptionToken
+        {
+            Exchange = Constants.EXCHANGE_NFO,
+            Token = 35042
+        },
+    }, Constants.TICK_MODE_FULL);
+}
+```
+
+# Links
+- [FlatTrade REST API Documentation](https://pi.flattrade.in/)
+- [FlatTrade Web Trading](https://web.flattrade.in/#/)
+- [OptionEdge X (Twitter) @optionedgein](https://x.com/optionedgein)
+- [OptionEdge Youtube Channel](https://www.youtube.com/@optionedge)
+
+# Credits
+- Websocket code reference is based on Zerodha Kite Connect .Net Client Library 
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
