@@ -461,16 +461,10 @@ namespace OptionEdge.API.FlatTrade
 
             request.AddStringBody(JsonConvert.SerializeObject(apiTokenParams), ContentType.Json);
 
-            if (_enableLogging)
-                Utils.LogMessage($"Calling encryption key endpoint: {apiTokenParams}");
-
             var apiTokenResult = await restClient.PostAsync<APITokenResult>(request);
 
-            if (_enableLogging)
-                Utils.LogMessage($"Encryption Key Result. Status: {apiTokenResult.Status}-{apiTokenResult.ErrorMessage}");
-
             if (apiTokenResult.Status == Constants.API_RESPONSE_STATUS_Not_OK)
-                throw new Exception($"Error getting encryption key. Status: {apiTokenResult.Status}, Error Message: {apiTokenResult.ErrorMessage}");
+                throw new Exception($"Unable to get access token: {apiTokenResult.Status}, Error Message: {apiTokenResult.ErrorMessage}");
 
             if (restClient != null) restClient.Dispose();
 

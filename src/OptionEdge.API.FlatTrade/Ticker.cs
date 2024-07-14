@@ -2,11 +2,13 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
 using System.Net.WebSockets;
 using System.Text;
 using System.Threading;
 using Utf8Json;
+using Websocket.Client;
 
 namespace OptionEdge.API.FlatTrade
 {
@@ -18,15 +20,10 @@ namespace OptionEdge.API.FlatTrade
         private string _accessToken;
         
         private string _socketUrl = "wss://ws1.FlatTradeonline.com/NorenWS";
-        private bool _isReconnect = false;
-        private int _interval = 5;
-        private int _retries = 50;
-        private int _retryCount = 0;
 
-        System.Timers.Timer _timer;
-        int _timerTick = 5;
+        private WebsocketClient _ws;
 
-        private IWebSocket _ws;
+        private int _reconnectCounter = 0;
 
         bool _isReady;
 
@@ -39,17 +36,13 @@ namespace OptionEdge.API.FlatTrade
         public delegate void OnReadyHandler();
         public delegate void OnCloseHandler();
         public delegate void OnTickHandler(Tick TickData);
-        public delegate void OnErrorHandler(string Message);
-        public delegate void OnReconnectHandler();
-        public delegate void OnNoReconnectHandler();
+        public delegate void OnReconnectHandler();       
         
         public event OnConnectHandler OnConnect;
         public event OnReadyHandler OnReady;
         public event OnCloseHandler OnClose;
         public event OnTickHandler OnTick;
-        public event OnErrorHandler OnError;
         public event OnReconnectHandler OnReconnect;
-        public event OnNoReconnectHandler OnNoReconnect;
 
         Func<int, bool> _shouldUnSubscribe = null;
 
@@ -66,57 +59,101 @@ namespace OptionEdge.API.FlatTrade
             _userId = userId;
             _accessToken = accessToken;
             _subscribedTokens = new Dictionary<SubscriptionToken, string>();
-            _interval = reconnectInterval;
-            _timerTick = reconnectInterval;
-            _retries = reconnectTries;
-            _isReconnect = reconnect;
 
             if (string.IsNullOrEmpty(socketUrl))
                 _socketUrl = "wss://piconnect.flattrade.in/PiConnectWSTp/";
             else
                 _socketUrl = socketUrl;
 
-            _ws = new WebSocket();
+            var factory = new Func<ClientWebSocket>(() => new ClientWebSocket
+            {
+                Options =
+                {
+                    KeepAliveInterval = TimeSpan.FromSeconds(5),
+                }
+            });
 
-            _ws.OnConnect += _onConnect;
-            _ws.OnData += _onData;
-            _ws.OnClose += _onClose;
-            _ws.OnError += _onError;
+            _ws = new WebsocketClient(new Uri( _socketUrl), factory);
 
-            _timer = new System.Timers.Timer();
-            _timer.Elapsed += _onTimerTick;
-            _timer.Interval = 1000;
+            // By default 1 minite for ReconnectTimeout
+            //_ws.ReconnectTimeout = TimeSpan.FromSeconds(60);
+
+            _ws.ErrorReconnectTimeout = TimeSpan.FromSeconds(30);
+            _ws.ReconnectionHappened.Subscribe(type => {
+
+                if (_reconnectCounter > 0)
+                {
+                    if (_subscribedTokens.Count > 0)
+                        ReSubscribe();
+                }
+                OnReconnect?.Invoke();
+            });
+
+            _ws.DisconnectionHappened.Subscribe(message =>
+            {
+                OnClose?.Invoke();
+            });
+
+            _ws.LostReconnectTimeout = TimeSpan.FromSeconds(15);
+
+            _ws.MessageReceived.Subscribe(message =>
+            {
+                if (message.MessageType  == WebSocketMessageType.Text)
+                {
+                    var data = JsonSerializer.Deserialize<dynamic>(message.Text);
+                    if (data["t"] == "c")
+                    {
+
+                    }
+                    else if (data["t"] == "ck")
+                    {
+                        var connectAck = new ConnectAck(data);
+
+                        if (connectAck.Status.ToUpper() != Constants.STATUS_OK.ToUpper())
+                        {
+                            if (_debug)
+                            {
+                                Utils.LogMessage($"Socker connection response was not successfull. Response: {connectAck.Status}");
+                                return;
+                            }
+                        }
+                        _isReady = true;
+
+                        OnReady();
+
+                        if (_debug)
+                            Utils.LogMessage("Connection acknowledgement received. Websocket connected.");
+                    }
+                    else if (data["t"] == "tk" || data["t"] == "dk")
+                    {
+                        Tick tick = new Tick(data);
+                        //AddToTickStore(tick);
+                        OnTick(tick);
+                    }
+                    else if (data["t"] == "tf" || data["t"] == "df")
+                    {
+                        Tick tick = new Tick(data);
+                        //FormatTick(ref tick);
+                        OnTick(tick);
+                    }
+                    else
+                    {
+                        if (_debug)
+                            Utils.LogMessage($"Unknown feed type: {data["t"]}");
+                    }
+                }
+                else if (message.MessageType == WebSocketMessageType.Close)
+                {
+                    Close();
+                }
+            });
         }
-
-        internal void SetShouldUnSubscribeHandler(Func<int,bool> shouldUnSubscribe )
-        {
-            _shouldUnSubscribe = shouldUnSubscribe; 
-        }
-
-        private void _onError(string Message)
-        {
-            _tickStore?.Clear();
-            _timerTick = _interval;
-            _timer.Start();
-            OnError?.Invoke(Message);
-        }
-
-        private void _onClose()
-        {
-            _tickStore?.Clear();
-            _timer.Stop();
-            OnClose?.Invoke();
-        }
-
         public void Close()
         {
             _subscribedTokens?.Clear();
-            _ws?.Close();
-            _tickStore?.Clear();
-            _timer.Stop();
-        }
-       
-        ConcurrentDictionary<string, ConcurrentDictionary<int, Tick>> _tickStore = new ConcurrentDictionary<string, ConcurrentDictionary<int, Tick>>();
+            _ws.Stop( WebSocketCloseStatus.NormalClosure,"close");
+            _ws.Dispose();
+        }       
 
         //private void FormatTick(ref Tick tick)
         //{
@@ -247,99 +284,9 @@ namespace OptionEdge.API.FlatTrade
         //    FormatTick(ref tick);
         //}
 
-        private void _onData(byte[] Data, int Count, string MessageType)
-        {
-            if (_debug) Utils.LogMessage("On Data event");
-
-            _timerTick = _interval;
-
-            if (MessageType == "Text")
-            {
-                string message = Encoding.UTF8.GetString(Data.Take(Count).ToArray());
-                if (_debug) Utils.LogMessage("WebSocket Message: " + message);
-
-                var data = JsonSerializer.Deserialize<dynamic>(Data);
-                if (data["t" == "c"])
-                {
-
-                }else if (data["t"] == "ck")
-                {
-                    var connectAck = new ConnectAck(data);
-
-                    if (connectAck.Status != Constants.STATUS_NOT_OK)
-                    {
-                        if (_debug)
-                        {
-                            Utils.LogMessage($"Socker connection response was not successfull. Response: {connectAck.Status}");
-                            return;
-                        }
-                    }
-                    _isReady = true;
-
-                    OnReady();
-
-                    if (_subscribedTokens.Count > 0)
-                        ReSubscribe();
-
-                    if (_debug)
-                        Utils.LogMessage("Connection acknowledgement received. Websocket connected.");
-                }
-                else if (data["t"] == "tk" || data["t"] == "dk")
-                {
-                    Tick tick = new Tick(data);
-                    //AddToTickStore(tick);
-                    OnTick(tick);
-                } else if (data["t"] == "tf" || data["t"] == "df")
-                {
-                    Tick tick = new Tick(data);
-                    //FormatTick(ref tick);
-                    OnTick(tick);
-                }
-                else
-                {
-                    if (_debug)
-                        Utils.LogMessage($"Unknown feed type: {data["t"]}");
-                }
-            }
-            else if (MessageType == "Close")
-            {
-                Close();
-            }
-        }
-
-        private void _onTimerTick(object sender, System.Timers.ElapsedEventArgs e)
-        {
-            _timerTick--;
-            if (_timerTick < 0)
-            {
-                _timer.Stop();
-                if (_isReconnect)
-                    Reconnect();
-            }
-            if (_debug) Utils.LogMessage(_timerTick.ToString());
-        }
-
-        private void _onConnect()
-        {
-            _ws.Send(JsonSerializer.ToJsonString(new CreateWebsocketConnectionRequest
-            {
-                AccessToken = _accessToken,
-                AccountId = _userId,
-                UserId = _userId,
-                RequestType = "c",
-                Source = "API"
-            }));
-
-            _retryCount = 0;
-            _timerTick = _interval;
-            _timer.Start();
-
-            OnConnect?.Invoke();
-        }
-
         public bool IsConnected
         {
-            get { return _ws.IsConnected(); }
+            get { return _ws.IsRunning; }
         }
 
         public bool IsReady
@@ -348,35 +295,22 @@ namespace OptionEdge.API.FlatTrade
         }
 
         public void Connect()
-        {
-            _timerTick = _interval;
-            _timer.Start();
+        {          
             if (!IsConnected)
             {
-                _ws.Connect(_socketUrl);
-            }
-        }
+                _ws.Start();
 
-        private void Reconnect()
-        {
-            if (IsConnected)
-                return;
+                Thread.Sleep(2000);
+                var data = JsonSerializer.ToJsonString(new CreateWebsocketConnectionRequest
+                {
+                    AccessToken = _accessToken,
+                    AccountId = _userId,
+                    UserId = _userId,
+                    RequestType = "c",
+                    Source = "API"
+                });
 
-            if (_retryCount > _retries)
-            {
-                _ws.Close(true);
-                DisableReconnect();
-                OnNoReconnect?.Invoke();
-            }
-            else
-            {
-                OnReconnect?.Invoke();
-                _retryCount += 1;
-                _ws.Close(true);
-                Connect();
-                _timerTick = (int)Math.Min(Math.Pow(2, _retryCount) * _interval, 60);
-                if (_debug) Utils.LogMessage("New interval " + _timerTick);
-                _timer.Start();
+                _ws.Send(data);
             }
         }
 
@@ -463,25 +397,6 @@ namespace OptionEdge.API.FlatTrade
 
             Subscribe(Constants.TICK_MODE_QUOTE, quoteTokens);
             Subscribe(Constants.TICK_MODE_FULL, fullTokens);
-        }
-
-        public void EnableReconnect(int interval = 5, int retries = 50)
-        {
-            _isReconnect = true;
-            _interval = Math.Max(interval, 5);
-            _retries = retries;
-
-            _timerTick = _interval;
-            if (IsConnected)
-                _timer.Start();
-        }
-
-        public void DisableReconnect()
-        {
-            _isReconnect = false;
-            if (IsConnected)
-                _timer.Stop();
-            _timerTick = _interval;
         }
     }
 }

@@ -123,19 +123,13 @@ namespace OptionEdge.API.FlatTrade.Samples
                 _ticker.OnTick += _ticker_OnTick;
                 _ticker.OnConnect += _ticker_OnConnect;
                 _ticker.OnClose += _ticker_OnClose;
-                _ticker.OnError += _ticker_OnError;
-                _ticker.OnNoReconnect += _ticker_OnNoReconnect;
                 _ticker.OnReconnect += _ticker_OnReconnect;
                 _ticker.OnReady += _ticker_OnReady;
-
-                _ticker.EnableReconnect();
 
                 //Connect the ticker to start receiving the live feeds
                 //DO NOT FORGOT TO CONNECT else you will not receive any feed
 
                 _ticker.Connect();
-
-
 
                 // var openInterest = _FlatTrade.GetOpenInterest(Constants.EXCHANGE_NFO, new int[] { 36303});
 
@@ -176,20 +170,25 @@ namespace OptionEdge.API.FlatTrade.Samples
             _ticker.Subscribe(Constants.TICK_MODE_FULL,
                 new SubscriptionToken[]
                     {
-                       //new SubscriptionToken
-                       //{
-                       //    Exchange = Constants.EXCHANGE_NSE,
-                       //    Token = 26000
-                       //},
-                       //new SubscriptionToken
-                       //{
-                       //    Exchange = Constants.EXCHANGE_NSE,
-                       //    Token = 26009
-                       //},
+                       new SubscriptionToken
+                       {
+                           Exchange = Constants.EXCHANGE_NSE,
+                           Token = 26000
+                       },
+                       new SubscriptionToken
+                       {
+                           Exchange = Constants.EXCHANGE_NSE,
+                           Token = 26009
+                       },
                        new SubscriptionToken
                        {
                            Exchange = Constants.EXCHANGE_NFO,
                            Token = 40246
+                       },
+                       new SubscriptionToken
+                       {
+                           Exchange = Constants.EXCHANGE_BFO,
+                           Token = 842575
                        },
 
                     });
