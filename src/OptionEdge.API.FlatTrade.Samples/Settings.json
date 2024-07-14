@@ -1,0 +1,11 @@
+﻿{
+  "apiKey": "{{ YOUR_API_KEY }}",
+  "userId": "{{ YOUR_FlatTrade_USER_ID }}",
+  "password": "{{ YOUR_FlatTrade_Password }}",
+  "accountId": "{{ YOUR_ACCOUNT_ID }}",
+  "apiSecret": "{{ YOUR_API_SECRET }}",
+  "pan": "{{ YOUR_PAN }}",
+  "dob": "{{ YOUR_DOB }}",
+  "totpKey": "{{ YOUR_FLATTRADE_TOTP_KEY }}",
+  "enableLogging": true
+}

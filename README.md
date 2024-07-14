@@ -1,5 +1,5 @@
 # .Net library for FlatTrade REST API 
-Client library to communicate with [FlatTrade REST API]([https://v2api.aliceblueonline.com/introduction](https://pi.flattrade.in/)).
+Client library to communicate with [FlatTrade REST API]([https://v2api.FlatTradeonline.com/introduction](https://pi.flattrade.in/)).
 
 #WARNING: LIBRARY CURRENTLY UNDER DEVELOPMENT
 
