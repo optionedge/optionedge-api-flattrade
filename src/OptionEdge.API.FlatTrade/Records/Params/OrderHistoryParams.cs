@@ -3,9 +3,9 @@ using System.Linq;
 
 namespace OptionEdge.API.FlatTrade.Records
 {
-    public class OrderHistoryParams
+    public class OrderHistoryParams : BaseParams
     {
-        [JsonProperty("nestOrderNumber")]
+        [JsonProperty("norenordno")]
         public string OrderNumber;       
     }
 }

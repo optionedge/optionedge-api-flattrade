@@ -7,97 +7,95 @@ namespace OptionEdge.API.FlatTrade.Records
 {
     public class OrderHistoryResult : BaseResponseResult
     {
-        [JsonPropertyName("Trsym")]
-        public string TradingSymbol { get; set; }
-
-        [JsonPropertyName("Prc")]
-        public string Price { get; set; }
-
-        [JsonPropertyName("averageprice")]
-        public string AveragePrice { get; set; }
-
-        [JsonPropertyName("Qty")]
-        public int Qty { get; set; }
-
-        [JsonPropertyName("Status")]
-        public string OrderStatus { get; set; }
-
-        [JsonPropertyName("Action")]
-        public string TransactionType { get; set; }
-
-        [JsonPropertyName("Ordtype")]
-        public string OrderType { get; set; }
-
-        [JsonPropertyName("PriceNumerator")]
-        public string PriceNumerator { get; set; }
-
-        [JsonPropertyName("GeneralNumerator")]
-        public string GeneralNumerator { get; set; }
-
-        [JsonPropertyName("PriceDenomenator")]
-        public string PriceDenomenator { get; set; }
-
-        [JsonPropertyName("GeneralDenomenator")]
-        public string GeneralDenomenator { get; set; }
-
-        [JsonPropertyName("bqty")]
-        public int LotSize { get; set; }
-
         [JsonPropertyName("exchange")]
         public string Exchange { get; set; }
 
-        [JsonPropertyName("nestordernumber")]
+
+        [JsonPropertyName("tsym")]
+        public string TradingSymbol { get; set; }
+        [JsonPropertyName("norenordno")]
         public string OrderNumber { get; set; }
 
-        [JsonPropertyName("nestreqid")]
-        public string RequestId { get; set; }
+        [JsonPropertyName("prc")]
+        public string Price { get; set; }
+        [JsonPropertyName("qty")]
+        public int Qty { get; set; }
 
-        [JsonPropertyName("symbolname")]
-        public string SymbolName { get; set; }
+        [JsonPropertyName("prd")]
+        public string Product { get; set; }
+        [JsonPropertyName("status")]
+        public string OrderStatus { get; set; }
 
-        [JsonPropertyName("triggerprice")]
-        public decimal TriggerPrice { get; set;}
+        [JsonPropertyName("prctyp")]
+        public string PriceType { get; set; }
 
-        [JsonPropertyName("disclosedqty")]
-        public int DisclosedQty { get; set; }
 
-        [JsonPropertyName("exchangeorderid")]
-        public string ExchangeOrdeId { get; set; }
-
-        [JsonPropertyName("rejectionreason")]
-        public string RejectionReason { get; set; }
-
-        [JsonPropertyName("duration")]
-        public string OrderDuration { get; set; }
-
-        [JsonPropertyName("productcode")]
-        public string ProductCode { get; set; }
-
-        [JsonPropertyName("reporttype")]
+        /// <summary>
+        /// Report Type (fill/complete etc)
+        /// </summary>
+        [JsonPropertyName("rpt")]
         public string ReportType { get; set; }
 
-        [JsonPropertyName("customerfirm")]
-        public string CustomerFirm { get; set; }
+        /// <summary>
+        /// 	B -> BUY, S -> SELL [transtype should be 'B' or 'S' else reject].
+        /// </summary>
+        [JsonPropertyName("trantype")]
+        public string TransactionType { get; set; }
 
-        [JsonPropertyName("exchangetimestamp")]
-        public string ExchangeTime { get; set; }
+        [JsonPropertyName("fillshares")]
+        public string FilledQty { get; set; }
 
-        [JsonPropertyName("ordersource")]
-        public string OrderSource { get; set; }
+        [JsonPropertyName("avgprc")]
+        public string AveragePrice { get; set; }
 
-        [JsonPropertyName("filldateandtime")]
-        public string FilledTime { get; set; }
+        [JsonPropertyName("rejreason")]
+        public string RejectionReason { get; set; }
 
-        [JsonPropertyName("ordergenerationtype")]
-        public string OrderGenerationType { get; set; }
+        [JsonPropertyName("exchordid")]
+        public string ExchangeOrdeId { get; set; }
 
-        [JsonPropertyName("scripname")]
+
+        [JsonPropertyName("cancelqty")]
+        public string CanceledQty { get; set; }
+
+        /// <summary>
+        /// 	Any message Entered during order entry.
+        /// </summary>
+        [JsonPropertyName("remarks")]
         public string ScripName { get; set; }
 
-        [JsonPropertyName("legorderindicator")]
-        public string LegOrderIndicator { get; set; }
+        [JsonPropertyName("dscqty")]
+        public int DisclosedQty { get; set; }
 
-        [JsonPropertyName("filledShares")]
-        public string FilledQty { get; set; }
+        [JsonPropertyName("trgprc")]
+        public decimal TriggerPrice { get; set; }
+
+        [JsonPropertyName("ret")]
+        public string OrderValidity { get; set; }
+
+        [JsonPropertyName("bpprc")]
+        public decimal BookProfitPrice { get; set; }
+
+
+        [JsonPropertyName("blprc")]
+        public decimal BookLossPrice { get; set; }
+
+        [JsonPropertyName("trailprc")]
+        public decimal TrailingPrice { get; set; }
+
+        [JsonPropertyName("amo")]
+        public string AMO { get; set; }
+
+        [JsonPropertyName("pp")]
+        public decimal PricePrecision { get; set; }
+
+        [JsonPropertyName("ti")]
+        public decimal TickSize { get; set; }
+
+        [JsonPropertyName("ls")]
+        public int LotSize { get; set; }
+
+        [JsonPropertyName("token")]
+        public int InstrumentToken { get; set; }
     }
 }

@@ -117,19 +117,23 @@ namespace OptionEdge.API.FlatTrade.Samples
 
                 // Create Ticker instance
                 // No need to provide the userId, apiKey, it will be automatically set
-                _ticker = _flatTrade.CreateTicker();
+                //_ticker = _flatTrade.CreateTicker();
 
-                // Setup event handlers
-                _ticker.OnTick += _ticker_OnTick;
-                _ticker.OnConnect += _ticker_OnConnect;
-                _ticker.OnClose += _ticker_OnClose;
-                _ticker.OnReconnect += _ticker_OnReconnect;
-                _ticker.OnReady += _ticker_OnReady;
+                //// Setup event handlers
+                //_ticker.OnTick += _ticker_OnTick;
+                //_ticker.OnConnect += _ticker_OnConnect;
+                //_ticker.OnClose += _ticker_OnClose;
+                //_ticker.OnReconnect += _ticker_OnReconnect;
+                //_ticker.OnReady += _ticker_OnReady;
 
                 //Connect the ticker to start receiving the live feeds
                 //DO NOT FORGOT TO CONNECT else you will not receive any feed
 
-                _ticker.Connect();
+                //_ticker.Connect();
+
+                // Single order history
+
+                var orderHistory = _flatTrade.GetSingleOrderHistory("24071300001233");
 
                 // var openInterest = _FlatTrade.GetOpenInterest(Constants.EXCHANGE_NFO, new int[] { 36303});
 

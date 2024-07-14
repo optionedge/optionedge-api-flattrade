@@ -233,7 +233,16 @@ namespace OptionEdge.API.FlatTrade
             };
 
             return GetHistoricalData(historyDataParams);
-        }      
+        }
+
+        public virtual OrderHistoryResult[] GetSingleOrderHistory(string orderNumber)
+        {            
+            return ExecutePost<OrderHistoryResult[]>(_urls["single.order.history"], new OrderHistoryParams
+            {
+                UserId = _userId,
+                OrderNumber = orderNumber
+            });
+        }
 
         public virtual PlaceOrderResult PlaceOrder(PlaceOrderParams order)
         {
