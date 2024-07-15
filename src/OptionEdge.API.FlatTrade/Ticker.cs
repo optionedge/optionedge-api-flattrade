@@ -89,7 +89,6 @@ namespace OptionEdge.API.FlatTrade
         }
         private void _onError(string Message)
         {
-            _tickStore?.Clear();
             _timerTick = _interval;
             _timer.Start();
             OnError?.Invoke(Message);
@@ -97,7 +96,6 @@ namespace OptionEdge.API.FlatTrade
 
         private void _onClose()
         {
-            _tickStore?.Clear();
             _timer.Stop();
             OnClose?.Invoke();
         }
@@ -106,7 +104,6 @@ namespace OptionEdge.API.FlatTrade
         {
             _subscribedTokens?.Clear();
             _ws?.Close();
-            _tickStore?.Clear();
             _timer.Stop();
         }
         private void _onData(byte[] Data, int Count, string MessageType)
@@ -168,12 +165,16 @@ namespace OptionEdge.API.FlatTrade
 
         private void _onConnect()
         {
-            _ws.Send(JsonSerializer.ToJsonString(new CreateWebsocketConnectionRequest
+            var data = JsonSerializer.ToJsonString(new CreateWebsocketConnectionRequest
             {
                 AccessToken = _accessToken,
-                AccountId = _userId + "_API",
-                UserId = _userId + "_API"
-            }));
+                AccountId = _userId,
+                UserId = _userId,
+                RequestType = "c",
+                Source = "API"
+            });
+
+            _ws.Send(data);
 
             _retryCount = 0;
             _timerTick = _interval;
