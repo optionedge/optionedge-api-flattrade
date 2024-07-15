@@ -23,7 +23,7 @@ namespace OptionEdge.API.FlatTrade.Samples
         static Settings _settings = new Settings();
        
 
-        static FlatTrade _flatTrade;
+        static FlatTradeApi _flatTrade;
         static Ticker _ticker;
 
         static string _cachedTokenFile = $"flattrade_cached_token_{DateTime.Now.ToString("dd_MMM_yyyy")}.txt";
@@ -54,7 +54,7 @@ namespace OptionEdge.API.FlatTrade.Samples
                 // ==========================
 
                 // Create new instance of FlatTrade client library
-                _flatTrade = FlatTrade.CreateInstance(
+                _flatTrade = FlatTradeApi.CreateInstance(
                     _settings.UserId,
                     _settings.AccountId, 
                     _settings.ApiKey,
@@ -83,32 +83,32 @@ namespace OptionEdge.API.FlatTrade.Samples
                 // ==========================
                 // Download Master Contracts
                 // ==========================
-                //_flatTrade.SaveMasterContracts(Constants.EXCHANGE_NSE, $"flattrade_master_contracts_{DateTime.Now.ToString("dd_MM_yyyy")}_{Constants.EXCHANGE_NSE}.csv");
-                //_flatTrade.SaveMasterContracts(Constants.EXCHANGE_BSE, $"flattrade_master_contracts_{DateTime.Now.ToString("dd_MM_yyyy")}_{Constants.EXCHANGE_BSE}.csv");
-                //_flatTrade.SaveMasterContracts(Constants.EXCHANGE_NFO, $"flattrade_master_contracts_{DateTime.Now.ToString("dd_MM_yyyy")}_{Constants.EXCHANGE_NFO}.csv");
-                //_flatTrade.SaveMasterContracts(Constants.EXCHANGE_BFO, $"flattrade_master_contracts_{DateTime.Now.ToString("dd_MM_yyyy")}_{Constants.EXCHANGE_BFO}.csv");
+                _flatTrade.SaveMasterContracts(Constants.EXCHANGE_NSE, $"flattrade_master_contracts_{DateTime.Now.ToString("dd_MM_yyyy")}_{Constants.EXCHANGE_NSE}.csv");
+                _flatTrade.SaveMasterContracts(Constants.EXCHANGE_BSE, $"flattrade_master_contracts_{DateTime.Now.ToString("dd_MM_yyyy")}_{Constants.EXCHANGE_BSE}.csv");
+                _flatTrade.SaveMasterContracts(Constants.EXCHANGE_NFO, $"flattrade_master_contracts_{DateTime.Now.ToString("dd_MM_yyyy")}_{Constants.EXCHANGE_NFO}.csv");
+                _flatTrade.SaveMasterContracts(Constants.EXCHANGE_BFO, $"flattrade_master_contracts_{DateTime.Now.ToString("dd_MM_yyyy")}_{Constants.EXCHANGE_BFO}.csv");
 
                 // or load Master Contracts into list
-                //var masterContracts = _flatTrade.GetMasterContracts(Constants.EXCHANGE_NFO);
-                //masterContracts = _flatTrade.GetMasterContracts(Constants.EXCHANGE_BFO);
+                var masterContracts = _flatTrade.GetMasterContracts(Constants.EXCHANGE_NFO);
+                masterContracts = _flatTrade.GetMasterContracts(Constants.EXCHANGE_BFO);
 
-                //var limits = _flatTrade.GetLimits();
+                var limits = _flatTrade.GetLimits();
 
                 // ==========================
                 // Place Order - Regular
                 // ==========================
-                //var placeRegularOrderResult = _flatTrade.PlaceOrder(new PlaceOrderParams
-                //{
-                //    Exchange = Constants.EXCHANGE_NFO,
-                //    Remarks = "Test",
-                //    PriceType = Constants.PRICE_TYPE_MARKET,
-                //    Price = "0",
-                //    ProductCode = Constants.PRODUCT_CODE_MIS,
-                //    Quantity = "15",
-                //    TransactionType = Constants.TRANSACTION_TYPE_BUY,
-                //    InstrumentToken = 35458,
-                //    TradingSymbol = "BANKNIFTY31JUL24C33000"
-                //});
+                var placeRegularOrderResult = _flatTrade.PlaceOrder(new PlaceOrderParams
+                {
+                    Exchange = Constants.EXCHANGE_NFO,
+                    Remarks = "Test",
+                    PriceType = Constants.PRICE_TYPE_MARKET,
+                    Price = 0,
+                    ProductCode = Constants.PRODUCT_CODE_MIS,
+                    Quantity = 15,
+                    TransactionType = Constants.TRANSACTION_TYPE_BUY,
+                    InstrumentToken = 35458,
+                    TradingSymbol = "BANKNIFTY31JUL24C33000"
+                });
 
 
                 // ==========================
@@ -117,19 +117,19 @@ namespace OptionEdge.API.FlatTrade.Samples
 
                 // Create Ticker instance
                 // No need to provide the userId, apiKey, it will be automatically set
-                //_ticker = _flatTrade.CreateTicker();
+                _ticker = _flatTrade.CreateTicker();
 
                 //// Setup event handlers
-                //_ticker.OnTick += _ticker_OnTick;
-                //_ticker.OnConnect += _ticker_OnConnect;
-                //_ticker.OnClose += _ticker_OnClose;
-                //_ticker.OnReconnect += _ticker_OnReconnect;
-                //_ticker.OnReady += _ticker_OnReady;
+                _ticker.OnTick += _ticker_OnTick;
+                _ticker.OnConnect += _ticker_OnConnect;
+                _ticker.OnClose += _ticker_OnClose;
+                _ticker.OnReconnect += _ticker_OnReconnect;
+                _ticker.OnReady += _ticker_OnReady;
 
                 //Connect the ticker to start receiving the live feeds
                 //DO NOT FORGOT TO CONNECT else you will not receive any feed
 
-                //_ticker.Connect();
+                _ticker.Connect();
 
                 // Single order history
 

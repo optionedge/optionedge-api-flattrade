@@ -20,7 +20,7 @@ using Contract = OptionEdge.API.FlatTrade.Records.Contract;
 
 namespace OptionEdge.API.FlatTrade
 {
-    public class FlatTrade
+    public class FlatTradeApi
     {
         string _apiKey;
         string _apiSecret;
@@ -32,7 +32,7 @@ namespace OptionEdge.API.FlatTrade
 
         protected readonly RestClient _restClient;
 
-        public static FlatTrade CreateInstance(
+        public static FlatTradeApi CreateInstance(
             string userId, 
             string accountId, 
             string apiKey, 
@@ -40,7 +40,7 @@ namespace OptionEdge.API.FlatTrade
             string baseUrlTrade = "", 
             bool enableLogging = false)
         {
-            return new FlatTrade(
+            return new FlatTradeApi(
                 userId, 
                 accountId, 
                 apiKey,
@@ -117,7 +117,7 @@ namespace OptionEdge.API.FlatTrade
             [Constants.EXCHANGE_BFO + "_INDEX"] = "https://flattrade.s3.ap-south-1.amazonaws.com/scripmaster/Bfo_Equity_Derivatives.csv",
         };
 
-        private FlatTrade (
+        private FlatTradeApi (
             string userId, 
             string accountId, 
             string apiKey, 
@@ -235,13 +235,41 @@ namespace OptionEdge.API.FlatTrade
             return GetHistoricalData(historyDataParams);
         }
 
-        public virtual OrderHistoryResult[] GetSingleOrderHistory(string orderNumber)
+        public OrderHistoryResult[] GetSingleOrderHistory(string orderNumber)
         {            
             return ExecutePost<OrderHistoryResult[]>(_urls["single.order.history"], new OrderHistoryParams
             {
                 UserId = _userId,
                 OrderNumber = orderNumber
             });
+        }
+
+        public  OrderHistoryResult GetSingleOrderHistory(string orderNumber, Func<string, bool> hasOrderStatus, int maxRetries = 5, int retryDelay = 500)
+        {
+            int retry = 1;
+
+            OrderHistoryResult orderHistory = null;
+
+            while (retry <= maxRetries)
+            {
+                retry++;
+
+                var orderHistories = GetSingleOrderHistory(orderNumber);
+                if (orderHistories != null && orderHistories.Length > 0)
+                {
+                    orderHistory = orderHistories.Where(x => hasOrderStatus(x.OrderStatus)).FirstOrDefault();
+                }
+
+                if (orderHistory == null)
+                {
+                    Task.Delay(retryDelay).Wait();
+                    continue;
+                }
+                else
+                    break;
+            }
+
+            return orderHistory;
         }
 
         public virtual PlaceOrderResult PlaceOrder(PlaceOrderParams order)
