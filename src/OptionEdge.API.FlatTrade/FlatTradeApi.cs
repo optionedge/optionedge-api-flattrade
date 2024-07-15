@@ -114,7 +114,7 @@ namespace OptionEdge.API.FlatTrade
             [Constants.EXCHANGE_MCX] = "https://flattrade.s3.ap-south-1.amazonaws.com/scripmaster/Commodity.csv",
             [Constants.EXCHANGE_BSE] = "https://flattrade.s3.ap-south-1.amazonaws.com/scripmaster/BSE_Equity.csv",
             [Constants.EXCHANGE_BFO + "_EQUITY"] = "https://flattrade.s3.ap-south-1.amazonaws.com/scripmaster/Bfo_Equity_Derivatives.csv",
-            [Constants.EXCHANGE_BFO + "_INDEX"] = "https://flattrade.s3.ap-south-1.amazonaws.com/scripmaster/Bfo_Equity_Derivatives.csv",
+            [Constants.EXCHANGE_BFO + "_INDEX"] = "https://flattrade.s3.ap-south-1.amazonaws.com/scripmaster/Bfo_Index_Derivatives.csv",
         };
 
         private FlatTradeApi (
@@ -369,6 +369,11 @@ namespace OptionEdge.API.FlatTrade
                 contracts = GetMasterContractsInternal(exchange + "_EQUITY");
 
                 contracts.AddRange( GetMasterContractsInternal(exchange + "_INDEX"));
+            } else
+            {
+                contracts = GetMasterContractsInternal(exchange);
+
+                contracts.AddRange(GetMasterContractsInternal(exchange));
             }
             
             return contracts;
@@ -376,7 +381,7 @@ namespace OptionEdge.API.FlatTrade
 
         private  List<Contract> GetMasterContractsInternal(string exchange)
         {
-            List<Contract> contracts = new List<Contract>(100000);
+            List<Contract> contracts = new List<Contract>(999999);
             DownloadMasterContract(exchange, (stream) =>
             {
                 var streamReader = new StreamReader(stream);

@@ -2,13 +2,11 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Drawing;
 using System.Linq;
 using System.Net.WebSockets;
 using System.Text;
 using System.Threading;
 using Utf8Json;
-using Websocket.Client;
 
 namespace OptionEdge.API.FlatTrade
 {
@@ -18,12 +16,17 @@ namespace OptionEdge.API.FlatTrade
 
         private string _userId;
         private string _accessToken;
-        
+
         private string _socketUrl = "wss://ws1.FlatTradeonline.com/NorenWS";
+        private bool _isReconnect = false;
+        private int _interval = 5;
+        private int _retries = 50;
+        private int _retryCount = 0;
 
-        private WebsocketClient _ws;
+        System.Timers.Timer _timer;
+        int _timerTick = 5;
 
-        private int _reconnectCounter = 0;
+        private IWebSocket _ws;
 
         bool _isReady;
 
@@ -36,13 +39,17 @@ namespace OptionEdge.API.FlatTrade
         public delegate void OnReadyHandler();
         public delegate void OnCloseHandler();
         public delegate void OnTickHandler(Tick TickData);
-        public delegate void OnReconnectHandler();       
+        public delegate void OnErrorHandler(string Message);
+        public delegate void OnReconnectHandler();
+        public delegate void OnNoReconnectHandler();
         
         public event OnConnectHandler OnConnect;
         public event OnReadyHandler OnReady;
         public event OnCloseHandler OnClose;
         public event OnTickHandler OnTick;
+        public event OnErrorHandler OnError;
         public event OnReconnectHandler OnReconnect;
+        public event OnNoReconnectHandler OnNoReconnect;
 
         Func<int, bool> _shouldUnSubscribe = null;
 
@@ -59,234 +66,125 @@ namespace OptionEdge.API.FlatTrade
             _userId = userId;
             _accessToken = accessToken;
             _subscribedTokens = new Dictionary<SubscriptionToken, string>();
+            _interval = reconnectInterval;
+            _timerTick = reconnectInterval;
+            _retries = reconnectTries;
+            _isReconnect = reconnect;
 
             if (string.IsNullOrEmpty(socketUrl))
-                _socketUrl = "wss://piconnect.flattrade.in/PiConnectWSTp/";
+                _socketUrl = "wss://ws1.FlatTradeonline.com/NorenWS";
             else
                 _socketUrl = socketUrl;
 
-            var factory = new Func<ClientWebSocket>(() => new ClientWebSocket
-            {
-                Options =
-                {
-                    KeepAliveInterval = TimeSpan.FromSeconds(5),
-                }
-            });
+            _ws = new WebSocket();
 
-            _ws = new WebsocketClient(new Uri( _socketUrl), factory);
+            _ws.OnConnect += _onConnect;
+            _ws.OnData += _onData;
+            _ws.OnClose += _onClose;
+            _ws.OnError += _onError;
 
-            // By default 1 minite for ReconnectTimeout
-            //_ws.ReconnectTimeout = TimeSpan.FromSeconds(60);
-
-            _ws.ErrorReconnectTimeout = TimeSpan.FromSeconds(30);
-            _ws.ReconnectionHappened.Subscribe(type => {
-
-                if (_reconnectCounter > 0)
-                {
-                    if (_subscribedTokens.Count > 0)
-                        ReSubscribe();
-                }
-                OnReconnect?.Invoke();
-            });
-
-            _ws.DisconnectionHappened.Subscribe(message =>
-            {
-                OnClose?.Invoke();
-            });
-
-            _ws.LostReconnectTimeout = TimeSpan.FromSeconds(15);
-
-            _ws.MessageReceived.Subscribe(message =>
-            {
-                if (message.MessageType  == WebSocketMessageType.Text)
-                {
-                    var data = JsonSerializer.Deserialize<dynamic>(message.Text);
-                    if (data["t"] == "c")
-                    {
-
-                    }
-                    else if (data["t"] == "ck")
-                    {
-                        var connectAck = new ConnectAck(data);
-
-                        if (connectAck.Status.ToUpper() != Constants.STATUS_OK.ToUpper())
-                        {
-                            if (_debug)
-                            {
-                                Utils.LogMessage($"Socker connection response was not successfull. Response: {connectAck.Status}");
-                                return;
-                            }
-                        }
-                        _isReady = true;
-
-                        OnReady();
-
-                        if (_debug)
-                            Utils.LogMessage("Connection acknowledgement received. Websocket connected.");
-                    }
-                    else if (data["t"] == "tk" || data["t"] == "dk")
-                    {
-                        Tick tick = new Tick(data);
-                        //AddToTickStore(tick);
-                        OnTick(tick);
-                    }
-                    else if (data["t"] == "tf" || data["t"] == "df")
-                    {
-                        Tick tick = new Tick(data);
-                        //FormatTick(ref tick);
-                        OnTick(tick);
-                    }
-                    else
-                    {
-                        if (_debug)
-                            Utils.LogMessage($"Unknown feed type: {data["t"]}");
-                    }
-                }
-                else if (message.MessageType == WebSocketMessageType.Close)
-                {
-                    Close();
-                }
-            });
+            _timer = new System.Timers.Timer();
+            _timer.Elapsed += _onTimerTick;
+            _timer.Interval = 1000;
         }
+        private void _onError(string Message)
+        {
+            _tickStore?.Clear();
+            _timerTick = _interval;
+            _timer.Start();
+            OnError?.Invoke(Message);
+        }
+
+        private void _onClose()
+        {
+            _tickStore?.Clear();
+            _timer.Stop();
+            OnClose?.Invoke();
+        }
+
         public void Close()
         {
             _subscribedTokens?.Clear();
-            _ws.Stop( WebSocketCloseStatus.NormalClosure,"close");
-            _ws.Dispose();
-        }       
+            _ws?.Close();
+            _tickStore?.Clear();
+            _timer.Stop();
+        }
+        private void _onData(byte[] Data, int Count, string MessageType)
+        {
+            if (_debug) Utils.LogMessage("On Data event");
 
-        //private void FormatTick(ref Tick tick)
-        //{
-        //    if (_tickStore.ContainsKey(tick.Exchange) && _tickStore[tick.Exchange].ContainsKey(tick.Token.Value))
-        //    {
-        //        ConcurrentDictionary<int, Tick> exchangeStore = null;
-        //        Tick storedTick = null;
+            _timerTick = _interval;
 
-        //        _tickStore.TryGetValue(tick.Exchange, out exchangeStore);
-        //        exchangeStore.TryGetValue(tick.Token.Value, out storedTick);
+            if (MessageType == "Text")
+            {
+                string message = Encoding.UTF8.GetString(Data.Take(Count).ToArray());
+                if (_debug) Utils.LogMessage("WebSocket Message: " + message);
 
-        //        tick.PreviousDayClose = storedTick.PreviousDayClose;
-        //        tick.ChangeValue = storedTick.ChangeValue;
+                var data = JsonSerializer.Deserialize<dynamic>(Data);
+                if (data["t"] == "ck")
+                {
+                    _isReady = true;
 
-        //        if (tick.BuyPrice1 <= 0)
-        //            tick.BuyPrice1 = storedTick.BuyPrice1;
-        //        else
-        //            storedTick.BuyPrice1 = tick.BuyPrice1;
+                    OnReady();
 
-        //        if (tick.BuyPrice2 <= 0)
-        //            tick.BuyPrice2 = storedTick.BuyPrice2;
-        //        else
-        //            storedTick.BuyPrice2 = tick.BuyPrice2;
+                    if (_subscribedTokens.Count > 0)
+                        ReSubscribe();
 
-        //        if (tick.BuyPrice3 <= 0)
-        //            tick.BuyPrice3 = storedTick.BuyPrice3;
-        //        else
-        //            storedTick.BuyPrice3 = tick.BuyPrice3;
+                    if (_debug)
+                        Utils.LogMessage("Connection acknowledgement received. Websocket connected.");
+                }
+                else if (data["t"] == "tk" || data["t"] == "dk")
+                {
+                    Tick tick = new Tick(data);
+                    OnTick(tick);
+                } else if (data["t"] == "tf" || data["t"] == "df")
+                {
+                    Tick tick = new Tick(data);
+                    OnTick(tick);
+                }
+                else
+                {
+                    if (_debug)
+                        Utils.LogMessage($"Unknown feed type: {data["t"]}");
+                }
+            }
+            else if (MessageType == "Close")
+            {
+                Close();
+            }
+        }
 
-        //        if (tick.BuyPrice4 <= 0)
-        //            tick.BuyPrice4 = storedTick.BuyPrice4;
-        //        else
-        //            storedTick.BuyPrice4 = tick.BuyPrice4;
+        private void _onTimerTick(object sender, System.Timers.ElapsedEventArgs e)
+        {
+            _timerTick--;
+            if (_timerTick < 0)
+            {
+                _timer.Stop();
+                if (_isReconnect)
+                    Reconnect();
+            }
+            if (_debug) Utils.LogMessage(_timerTick.ToString());
+        }
 
-        //        if (tick.BuyPrice5 <= 0)
-        //            tick.BuyPrice5 = storedTick.BuyPrice5;
-        //        else
-        //            storedTick.BuyPrice5 = tick.BuyPrice5;
+        private void _onConnect()
+        {
+            _ws.Send(JsonSerializer.ToJsonString(new CreateWebsocketConnectionRequest
+            {
+                AccessToken = _accessToken,
+                AccountId = _userId + "_API",
+                UserId = _userId + "_API"
+            }));
 
+            _retryCount = 0;
+            _timerTick = _interval;
+            _timer.Start();
 
-        //        if (tick.SellPrice1 <= 0)
-        //            tick.SellPrice1 = storedTick.SellPrice1;
-        //        else
-        //            storedTick.SellPrice1 = tick.SellPrice1;
-
-        //        if (tick.SellPrice2 <= 0)
-        //            tick.SellPrice2 = storedTick.SellPrice2;
-        //        else
-        //            storedTick.SellPrice2 = tick.SellPrice2;
-
-        //        if (tick.SellPrice3 <= 0)
-        //            tick.SellPrice3 = storedTick.SellPrice3;
-        //        else
-        //            storedTick.SellPrice3 = tick.SellPrice3;
-                
-        //        if (tick.SellPrice4 <= 0)
-        //            tick.SellPrice4 = storedTick.SellPrice4;
-        //        else
-        //            storedTick.SellPrice4 = tick.SellPrice4;
-                
-        //        if (tick.SellPrice5 <= 0)
-        //            tick.SellPrice5 = storedTick.SellPrice5;
-        //        else
-        //            storedTick.SellPrice5 = tick.SellPrice5;
-
-
-        //        if (tick.BuyQty1 <= 0)
-        //            tick.BuyQty1 = storedTick.BuyQty1;
-        //        else
-        //            storedTick.BuyQty1 = tick.BuyQty1;
-
-        //        if (tick.BuyQty2 <= 0)
-        //            tick.BuyQty2 = storedTick.BuyQty2;
-        //        if (tick.BuyQty3 <= 0)
-        //            tick.BuyQty3 = storedTick.BuyQty3;
-        //        if (tick.BuyQty4 <= 0)
-        //            tick.BuyQty4 = storedTick.BuyQty4;
-        //        if (tick.BuyQty5 <= 0)
-        //            tick.BuyQty5 = storedTick.BuyQty5;
-
-        //        if (tick.SellQty1 <= 0)
-        //            tick.SellQty1 = storedTick.SellQty1;
-        //        else
-        //            storedTick.SellQty1 = tick.SellQty1;
-
-        //        if (tick.SellQty2 <= 0)
-        //            tick.SellQty2 = storedTick.SellQty2;
-        //        if (tick.SellQty3 <= 0)
-        //            tick.SellQty3 = storedTick.SellQty3;
-        //        if (tick.SellQty4 <= 0)
-        //            tick.SellQty4 = storedTick.SellQty4;
-        //        if (tick.SellQty5 <= 0)
-        //            tick.SellQty5 = storedTick.SellQty5;
-
-
-        //    }
-        //}
-
-        //private void AddToTickStore(Tick tick)
-        //{
-        //    if (!_tickStore.ContainsKey(tick.Exchange))
-        //        _tickStore.TryAdd(tick.Exchange, new ConcurrentDictionary<int, Tick>());
-
-        //    if (!_tickStore[tick.Exchange].ContainsKey(tick.Token.Value))
-        //    {
-        //        decimal close;
-        //        decimal changeValue;
-        //        if (tick.Close.HasValue && tick.Close.Value > 0)
-        //        {
-        //            close = tick.Close.Value;
-        //            changeValue = tick.LastTradedPrice.Value - tick.Close.Value;
-        //        }
-        //        else
-        //        {
-        //            changeValue = tick.LastTradedPrice.Value * (tick.PercentageChange.Value / 100);
-        //            if (Math.Sign(tick.PercentageChange.Value) == 1)
-        //                close = tick.LastTradedPrice.Value - changeValue;
-        //            else
-        //                close = tick.LastTradedPrice.Value + changeValue;
-        //        }
-
-        //        tick.PreviousDayClose = close;
-        //        tick.ChangeValue = changeValue;
-
-        //        _tickStore[tick.Exchange].TryAdd(tick.Token.Value, tick);
-        //    }
-
-        //    FormatTick(ref tick);
-        //}
+            OnConnect?.Invoke();
+        }
 
         public bool IsConnected
         {
-            get { return _ws.IsRunning; }
+            get { return _ws.IsConnected(); }
         }
 
         public bool IsReady
@@ -295,22 +193,35 @@ namespace OptionEdge.API.FlatTrade
         }
 
         public void Connect()
-        {          
+        {
+            _timerTick = _interval;
+            _timer.Start();
             if (!IsConnected)
             {
-                _ws.Start();
+                _ws.Connect(_socketUrl);
+            }
+        }
 
-                Thread.Sleep(2000);
-                var data = JsonSerializer.ToJsonString(new CreateWebsocketConnectionRequest
-                {
-                    AccessToken = _accessToken,
-                    AccountId = _userId,
-                    UserId = _userId,
-                    RequestType = "c",
-                    Source = "API"
-                });
+        private void Reconnect()
+        {
+            if (IsConnected)
+                return;
 
-                _ws.Send(data);
+            if (_retryCount > _retries)
+            {
+                _ws.Close(true);
+                DisableReconnect();
+                OnNoReconnect?.Invoke();
+            }
+            else
+            {
+                OnReconnect?.Invoke();
+                _retryCount += 1;
+                _ws.Close(true);
+                Connect();
+                _timerTick = (int)Math.Min(Math.Pow(2, _retryCount) * _interval, 60);
+                if (_debug) Utils.LogMessage("New interval " + _timerTick);
+                _timer.Start();
             }
         }
 
@@ -397,6 +308,25 @@ namespace OptionEdge.API.FlatTrade
 
             Subscribe(Constants.TICK_MODE_QUOTE, quoteTokens);
             Subscribe(Constants.TICK_MODE_FULL, fullTokens);
+        }
+
+        public void EnableReconnect(int interval = 5, int retries = 50)
+        {
+            _isReconnect = true;
+            _interval = Math.Max(interval, 5);
+            _retries = retries;
+
+            _timerTick = _interval;
+            if (IsConnected)
+                _timer.Start();
+        }
+
+        public void DisableReconnect()
+        {
+            _isReconnect = false;
+            if (IsConnected)
+                _timer.Stop();
+            _timerTick = _interval;
         }
     }
 }

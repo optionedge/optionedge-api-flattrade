@@ -97,18 +97,18 @@ namespace OptionEdge.API.FlatTrade.Samples
                 // ==========================
                 // Place Order - Regular
                 // ==========================
-                var placeRegularOrderResult = _flatTrade.PlaceOrder(new PlaceOrderParams
-                {
-                    Exchange = Constants.EXCHANGE_NFO,
-                    Remarks = "Test",
-                    PriceType = Constants.PRICE_TYPE_MARKET,
-                    Price = 0,
-                    ProductCode = Constants.PRODUCT_CODE_MIS,
-                    Quantity = 15,
-                    TransactionType = Constants.TRANSACTION_TYPE_BUY,
-                    InstrumentToken = 35458,
-                    TradingSymbol = "BANKNIFTY31JUL24C33000"
-                });
+                //var placeRegularOrderResult = _flatTrade.PlaceOrder(new PlaceOrderParams
+                //{
+                //    Exchange = Constants.EXCHANGE_NFO,
+                //    Remarks = "Test",
+                //    PriceType = Constants.PRICE_TYPE_MARKET,
+                //    Price = "0",
+                //    ProductCode = Constants.PRODUCT_CODE_MIS,
+                //    Quantity = "15",
+                //    TransactionType = Constants.TRANSACTION_TYPE_BUY,
+                //    InstrumentToken = 35458,
+                //    TradingSymbol = "BANKNIFTY31JUL24C33000"
+                //});
 
 
                 // ==========================
@@ -133,7 +133,7 @@ namespace OptionEdge.API.FlatTrade.Samples
 
                 // Single order history
 
-                var orderHistory = _flatTrade.GetSingleOrderHistory("24071300001233");
+                //var orderHistory = _flatTrade.GetSingleOrderHistory("24071300001233");
 
                 // var openInterest = _FlatTrade.GetOpenInterest(Constants.EXCHANGE_NFO, new int[] { 36303});
 
@@ -174,25 +174,30 @@ namespace OptionEdge.API.FlatTrade.Samples
             _ticker.Subscribe(Constants.TICK_MODE_FULL,
                 new SubscriptionToken[]
                     {
+                       //new SubscriptionToken
+                       //{
+                       //    Exchange = Constants.EXCHANGE_NSE,
+                       //    Token = 26000
+                       //},
+                       //new SubscriptionToken
+                       //{
+                       //    Exchange = Constants.EXCHANGE_NSE,
+                       //    Token = 26009
+                       //},
+                       //new SubscriptionToken
+                       //{
+                       //    Exchange = Constants.EXCHANGE_NFO,
+                       //    Token = 40246
+                       //},
+                       //new SubscriptionToken
+                       //{
+                       //    Exchange = Constants.EXCHANGE_BFO,
+                       //    Token = 842575
+                       //},
                        new SubscriptionToken
                        {
-                           Exchange = Constants.EXCHANGE_NSE,
-                           Token = 26000
-                       },
-                       new SubscriptionToken
-                       {
-                           Exchange = Constants.EXCHANGE_NSE,
-                           Token = 26009
-                       },
-                       new SubscriptionToken
-                       {
-                           Exchange = Constants.EXCHANGE_NFO,
-                           Token = 40246
-                       },
-                       new SubscriptionToken
-                       {
-                           Exchange = Constants.EXCHANGE_BFO,
-                           Token = 842575
+                           Exchange = Constants.EXCHANGE_BSE,
+                           Token = 1
                        },
 
                     });
