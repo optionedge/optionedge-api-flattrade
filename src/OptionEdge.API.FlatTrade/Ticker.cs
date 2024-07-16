@@ -1,4 +1,5 @@
-﻿using OptionEdge.API.FlatTrade.Records;
+﻿using Newtonsoft.Json.Linq;
+using OptionEdge.API.FlatTrade.Records;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -112,6 +113,7 @@ namespace OptionEdge.API.FlatTrade
 
             _timerTick = _interval;
 
+            Console.WriteLine($"{DateTime.Now}-FlatTrade: Received tick message");
             if (MessageType == "Text")
             {
                 string message = Encoding.UTF8.GetString(Data.Take(Count).ToArray());
@@ -244,7 +246,7 @@ namespace OptionEdge.API.FlatTrade
             var subscriptionRequst = new SubscribeFeedDataRequest
             {
                 SubscriptionTokens = tokens,
-                RequestType = mode == Constants.TICK_MODE_QUOTE ? Constants.SUBSCRIBE_SOCKET_TICK_DATA_REQUEST_TYPE_MARKET : Constants.SUBSCRIBE_SOCKET_TICK_DATA_REQUEST_TYPE_DEPTH,
+                RequestType = mode == Constants.TICK_MODE_QUOTE ? Constants.SUBSCRIBE_SOCKET_TICK_DATA_REQUEST_TYPE_MARKET : Constants.SUBSCRIBE_SOCKET_TICK_DATA_REQUEST_TYPE_MARKET,
             };
 
             var requestJson = JsonSerializer.ToJsonString(subscriptionRequst);
