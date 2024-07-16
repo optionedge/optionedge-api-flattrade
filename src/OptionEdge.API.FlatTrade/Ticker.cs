@@ -27,6 +27,9 @@ namespace OptionEdge.API.FlatTrade
         System.Timers.Timer _timer;
         int _timerTick = 5;
 
+        private System.Timers.Timer _timerHeartbeat;
+        private int _timerHeartbeatInterval = 40000;
+
         private IWebSocket _ws;
 
         bool _isReady;
@@ -87,7 +90,32 @@ namespace OptionEdge.API.FlatTrade
             _timer = new System.Timers.Timer();
             _timer.Elapsed += _onTimerTick;
             _timer.Interval = 1000;
+
+            _timerHeartbeat = new System.Timers.Timer();
+            _timerHeartbeat.Elapsed += _timerHeartbeat_Elapsed;
+            _timerHeartbeat.Interval = _timerHeartbeatInterval;
         }
+
+        private void _timerHeartbeat_Elapsed(object sender, System.Timers.ElapsedEventArgs e)
+        {
+            if (IsConnected)
+                SendHeartBeat();
+        }
+
+        private void SendHeartBeat()
+        {
+            try
+            {
+                if (!_ws.IsConnected()) return;
+                string msg = @"{\""k\"": \""\"",\""t\"": \""h\""}";
+                _ws.Send(msg);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"AliceBlue Market Ticker:Send Heartbeat error:{ex.ToString()}");
+            }
+        }
+
         private void _onError(string Message)
         {
             _timerTick = _interval;
@@ -98,6 +126,7 @@ namespace OptionEdge.API.FlatTrade
         private void _onClose()
         {
             _timer.Stop();
+            _timerHeartbeat.Stop();
             OnClose?.Invoke();
         }
 
@@ -106,21 +135,19 @@ namespace OptionEdge.API.FlatTrade
             _subscribedTokens?.Clear();
             _ws?.Close();
             _timer.Stop();
+            _timerHeartbeat.Stop();
         }
+
         private void _onData(byte[] Data, int Count, string MessageType)
         {
             if (_debug) Utils.LogMessage("On Data event");
 
             _timerTick = _interval;
 
-            Console.WriteLine($"{DateTime.Now}-FlatTrade: Received tick message");
             if (MessageType == "Text")
             {
-                string message = Encoding.UTF8.GetString(Data.Take(Count).ToArray());
-                if (_debug) Utils.LogMessage("WebSocket Message: " + message);
-
-                var data = JsonSerializer.Deserialize<dynamic>(Data);
-                if (data["t"] == "ck")
+                var tick = JsonSerializer.Deserialize<Tick>(Data.Take(Count).ToArray(), 0);
+                if (tick.ResponseType == "ck")
                 {
                     _isReady = true;
 
@@ -132,19 +159,17 @@ namespace OptionEdge.API.FlatTrade
                     if (_debug)
                         Utils.LogMessage("Connection acknowledgement received. Websocket connected.");
                 }
-                else if (data["t"] == "tk" || data["t"] == "dk")
+                else if (tick.ResponseType == "tk" || tick.ResponseType == "dk")
                 {
-                    Tick tick = new Tick(data);
                     OnTick(tick);
-                } else if (data["t"] == "tf" || data["t"] == "df")
+                } else if (tick.ResponseType == "tf" || tick.ResponseType == "df")
                 {
-                    Tick tick = new Tick(data);
                     OnTick(tick);
                 }
                 else
                 {
                     if (_debug)
-                        Utils.LogMessage($"Unknown feed type: {data["t"]}");
+                        Utils.LogMessage($"Unknown feed type: {tick.ResponseType}");
                 }
             }
             else if (MessageType == "Close")
@@ -181,6 +206,7 @@ namespace OptionEdge.API.FlatTrade
             _retryCount = 0;
             _timerTick = _interval;
             _timer.Start();
+            _timerHeartbeat.Start();
 
             OnConnect?.Invoke();
         }

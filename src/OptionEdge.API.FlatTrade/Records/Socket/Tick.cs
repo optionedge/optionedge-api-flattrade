@@ -1,7 +1,9 @@
-﻿using System;
+﻿using Newtonsoft.Json;
+using System;
 using System.Collections.Generic;
 using System.Runtime.Serialization;
 using System.Text;
+using System.Text.Json.Serialization;
 using Utf8Json;
 
 namespace OptionEdge.API.FlatTrade.Records
@@ -32,9 +34,8 @@ namespace OptionEdge.API.FlatTrade.Records
                     TickType = TICK_TYPE.Tick_Depth_Ack;
                 else if (responsType == Constants.SOCKET_RESPONSE_TYPE_TICK)
                     TickType = TICK_TYPE.Tick;
-                else if (responsType == Constants.SOCKET_RESPONSE_TYPE_TICK_DEPTH)
-                                    
-                TickType = TICK_TYPE.Tick_Depth;
+                else if (responsType == Constants.SOCKET_RESPONSE_TYPE_TICK_DEPTH)                                    
+                    TickType = TICK_TYPE.Tick_Depth;
 
                 TradingSymbol = Utils.IsPropertyExist(data, "ts") ? data["ts"] : null;
                 LTP = Utils.IsPropertyExist(data, "lp") ? Utils.ParseToDouble(data["lp"]) : 0;
@@ -57,32 +58,95 @@ namespace OptionEdge.API.FlatTrade.Records
             }
         }
 
-        public TICK_TYPE TickType { get; }
+        public TICK_TYPE TickType { get; set; }
+
+        private string _responeType;
+        [JsonPropertyName("t")]
+        [JsonProperty(PropertyName = "t")]
+        [DataMember(Name = "t")]
+        public string ResponseType
+        {
+            get
+            {
+                return _responeType;
+            }
+            set
+            {
+                _responeType = value;
+                if (_responeType == Constants.SOCKET_RESPONSE_TYPE_TICK_ACKNOWLEDGEMENT)
+                    TickType = TICK_TYPE.Tick_Ack;
+                else if (_responeType == Constants.SOCKET_RESPONSE_TYPE_TICK_DEPTH_ACKNOWLEDGEMENT)
+                    TickType = TICK_TYPE.Tick_Depth_Ack;
+                else if (_responeType == Constants.SOCKET_RESPONSE_TYPE_TICK)
+                    TickType = TICK_TYPE.Tick;
+                else if (_responeType == Constants.SOCKET_RESPONSE_TYPE_TICK_DEPTH)
+                    TickType = TICK_TYPE.Tick_Depth;
+            }
+        }
+
+        [JsonPropertyName("e")]
+        [JsonProperty(PropertyName = "e")]
+        [DataMember(Name = "e")]
         public string Exchange { get; set; }
 
-        public int? Token { get; set; }
+        [JsonPropertyName("tk")]
+        [JsonProperty(PropertyName = "tk")]
+        [DataMember(Name = "tk")]
+        public string Token { get; set; }
 
+        [JsonPropertyName("ts")]
+        [JsonProperty(PropertyName = "ts")]
+        [DataMember(Name = "ts")]
         public string TradingSymbol { get; set; }
 
+        [JsonPropertyName("lp")]
+        [JsonProperty(PropertyName = "lp")]
+        [DataMember(Name = "lp")]
+        public decimal LTP { get; set; }
 
-        public decimal? LTP { get; set; }
+        [JsonPropertyName("pc")]
+        [JsonProperty(PropertyName = "pc")]
+        [DataMember(Name = "pc")]
+        public decimal PercentageChange { get; set; }
 
-        public decimal? PercentageChange { get; set; }
+        [JsonPropertyName("v")]
+        [JsonProperty(PropertyName = "v")]
+        [DataMember(Name = "v")]
+        public string Volume { get; set; }
 
-        public int? Volume { get; set; }
+        [JsonPropertyName("o")]
+        [JsonProperty(PropertyName = "o")]
+        [DataMember(Name = "o")]
+        public decimal Open { get; set; }
 
-        public decimal? Open { get; set; }
+        [JsonPropertyName("h")]
+        [JsonProperty(PropertyName = "h")]
+        [DataMember(Name = "h")]
+        public decimal High { get; set; }
 
-        public decimal? High { get; set; }
+        [JsonPropertyName("l")]
+        [JsonProperty(PropertyName = "l")]
+        [DataMember(Name = "l")]
+        public decimal Low { get; set; }
 
-        public decimal? Low { get; set; }
+        [JsonPropertyName("c")]
+        [JsonProperty(PropertyName = "c")]
+        [DataMember(Name = "c")]
+        public decimal Close { get; set; }
 
-        public decimal? Close { get; set; }
+        [JsonPropertyName("ap")]
+        [JsonProperty(PropertyName = "ap")]
+        [DataMember(Name = "ap")]
+        public decimal AverageTradePrice { get; set; }
 
-        public decimal? AverageTradePrice { get; set; }
-
+        [JsonPropertyName("bp1")]
+        [JsonProperty(PropertyName = "bp1")]
+        [DataMember(Name = "bp1")]
         public decimal BestBuyPrice1 { get; set; }
 
+        [JsonPropertyName("sp1")]
+        [JsonProperty(PropertyName = "sp1")]
+        [DataMember(Name = "sp1")]
         public decimal BestSellPrice1 { get; set; }
     }
 }
