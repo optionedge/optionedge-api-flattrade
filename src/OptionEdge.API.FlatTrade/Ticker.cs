@@ -112,7 +112,7 @@ namespace OptionEdge.API.FlatTrade
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"AliceBlue Market Ticker:Send Heartbeat error:{ex.ToString()}");
+                Console.WriteLine($"FlatTrade Market Ticker:Send Heartbeat error:{ex.ToString()}");
             }
         }
 
