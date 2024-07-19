@@ -1,4 +1,4 @@
-﻿using Newtonsoft.Json.Linq;
+﻿using Microsoft.Extensions.Logging;
 using OptionEdge.API.FlatTrade.Records;
 using System;
 using System.Collections.Concurrent;
@@ -56,6 +56,7 @@ namespace OptionEdge.API.FlatTrade
         public event OnNoReconnectHandler OnNoReconnect;
 
         Func<int, bool> _shouldUnSubscribe = null;
+        ILogger _logger = null;
 
         public Ticker(
             string userId, 
@@ -64,7 +65,8 @@ namespace OptionEdge.API.FlatTrade
             bool reconnect = false, 
             int reconnectInterval = 5, 
             int reconnectTries = 50, 
-            bool debug = false)
+            bool debug = false,
+            ILogger logger = null)
         {
             _debug = debug;
             _userId = userId;
@@ -74,6 +76,7 @@ namespace OptionEdge.API.FlatTrade
             _timerTick = reconnectInterval;
             _retries = reconnectTries;
             _isReconnect = reconnect;
+            _logger = logger;
 
             if (string.IsNullOrEmpty(socketUrl))
                 _socketUrl = "wss://ws1.FlatTradeonline.com/NorenWS";
@@ -102,22 +105,34 @@ namespace OptionEdge.API.FlatTrade
                 SendHeartBeat();
         }
 
+        private void LogInformation(string message)
+        {
+            _logger?.LogInformation($"{this.GetType().FullName}-{message}"); 
+        }
+    
         private void SendHeartBeat()
         {
             try
             {
-                if (!_ws.IsConnected()) return;
+                this.LogInformation("FlatTrade: Heartbeat triggered.");
+
+                if (!_ws.IsConnected())
+                {
+                    this.LogInformation("FlatTrade: Unable to send heartbeat. Socket not connected.");
+                    return;
+                }
                 string msg = @"{\""k\"": \""\"",\""t\"": \""h\""}";
                 _ws.Send(msg);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"FlatTrade Market Ticker:Send Heartbeat error:{ex.ToString()}");
+                this.LogInformation($"FlatTrade: Send Heartbeat error:{ex.ToString()}");
             }
         }
 
         private void _onError(string Message)
         {
+            _logger.LogError($"On Error: {Message}");  
             _timerTick = _interval;
             _timer.Start();
             OnError?.Invoke(Message);
@@ -125,6 +140,7 @@ namespace OptionEdge.API.FlatTrade
 
         private void _onClose()
         {
+            _logger.LogError($"On Close");
             _timer.Stop();
             _timerHeartbeat.Stop();
             OnClose?.Invoke();
@@ -132,6 +148,7 @@ namespace OptionEdge.API.FlatTrade
 
         public void Close()
         {
+            _logger.LogError($"Just Close");
             _subscribedTokens?.Clear();
             _ws?.Close();
             _timer.Stop();
@@ -174,7 +191,9 @@ namespace OptionEdge.API.FlatTrade
             }
             else if (MessageType == "Close")
             {
-                Close();
+                this.LogInformation("On Message 'Closee'. Close is commented out");
+                // Lets not close
+                // Close();
             }
         }
 
@@ -192,6 +211,7 @@ namespace OptionEdge.API.FlatTrade
 
         private void _onConnect()
         {
+            _logger.LogInformation("OnConnect");
             var data = JsonSerializer.ToJsonString(new CreateWebsocketConnectionRequest
             {
                 AccessToken = _accessToken,
@@ -233,11 +253,16 @@ namespace OptionEdge.API.FlatTrade
 
         private void Reconnect()
         {
+            _logger.LogInformation($"On Reconnect");
             if (IsConnected)
+            {
+                _logger.LogInformation($"On Reconnect. Already connected. Returning.");
                 return;
+            }
 
             if (_retryCount > _retries)
             {
+                _logger.LogInformation($"On Reconnect Retry: retryCount {_retryCount}, retries: {_retries}");
                 _ws.Close(true);
                 DisableReconnect();
                 OnNoReconnect?.Invoke();
@@ -249,13 +274,14 @@ namespace OptionEdge.API.FlatTrade
                 _ws.Close(true);
                 Connect();
                 _timerTick = (int)Math.Min(Math.Pow(2, _retryCount) * _interval, 60);
-                if (_debug) Utils.LogMessage("New interval " + _timerTick);
+                _logger.LogInformation("New interval " + _timerTick);
                 _timer.Start();
             }
         }
 
         public void Subscribe(string exchnage, string mode, int[] tokens)
         {
+            _logger.LogInformation($"Subscribing {exchnage}, {mode}, {JsonSerializer.ToJsonString(tokens)}");
             var subscriptionTokens = tokens.Select(token => new SubscriptionToken
             {
                 Token = token,
@@ -277,10 +303,13 @@ namespace OptionEdge.API.FlatTrade
 
             var requestJson = JsonSerializer.ToJsonString(subscriptionRequst);
 
-            if (_debug) Utils.LogMessage(requestJson.Length.ToString());
+             _logger.LogInformation($"Subscribe request: {requestJson}");
 
             if (IsConnected)
+            {
+                _logger.LogInformation("Socket isConnected = true, sending subscribe request.");
                 _ws.Send(requestJson);
+            }
 
             foreach (SubscriptionToken token in subscriptionRequst.SubscriptionTokens)
             {
@@ -293,6 +322,7 @@ namespace OptionEdge.API.FlatTrade
 
         public void UnSubscribe(string exchnage, int[] tokens)
         {
+            _logger.LogInformation($"Unsubscribe: {exchnage}"); 
             var subscriptionTokens = tokens.Select(token => new SubscriptionToken
             {
                 Token = token,
@@ -316,7 +346,10 @@ namespace OptionEdge.API.FlatTrade
             if (_debug) Utils.LogMessage(requestJson.Length.ToString());
 
             if (IsConnected)
+            {
+                _logger.LogInformation($"Sokcet is connected true. Unsubscribing {requestJson}");
                 _ws.Send(requestJson);
+            }
 
             foreach (SubscriptionToken token in request.SubscribedTokens)
                 if (_subscribedTokens.ContainsKey(token))
@@ -325,7 +358,7 @@ namespace OptionEdge.API.FlatTrade
 
         private void ReSubscribe()
         {
-            if (_debug) Utils.LogMessage("Resubscribing");
+            _logger.LogInformation("Resubscribing");
 
             SubscriptionToken[] allTokens = _subscribedTokens.Keys.ToArray();
 
@@ -341,6 +374,7 @@ namespace OptionEdge.API.FlatTrade
 
         public void EnableReconnect(int interval = 5, int retries = 50)
         {
+            _logger.LogInformation($"EnableReconnect: {interval}"); 
             _isReconnect = true;
             _interval = Math.Max(interval, 5);
             _retries = retries;
@@ -352,6 +386,7 @@ namespace OptionEdge.API.FlatTrade
 
         public void DisableReconnect()
         {
+            _logger.LogInformation("Disable Reconnect");
             _isReconnect = false;
             if (IsConnected)
                 _timer.Stop();

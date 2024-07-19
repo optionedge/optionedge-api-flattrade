@@ -11,6 +11,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using LumenWorks.Framework.IO.Csv;
+using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using OptionEdge.API.FlatTrade.Records;
 using RestSharp;
@@ -147,12 +148,12 @@ namespace OptionEdge.API.FlatTrade
         }
 
         private Ticker _ticker;
-        public virtual Ticker CreateTicker()
+        public virtual Ticker CreateTicker(ILogger logger = null)
         {
             // Only single ticker instance allowed
             if (_ticker != null) return _ticker;
 
-            _ticker = new Ticker(_userId, _accessToken, socketUrl: _urls["websocketUrl"], debug: _enableLogging);
+            _ticker = new Ticker(_userId, _accessToken, socketUrl: _urls["websocketUrl"], debug: _enableLogging, logger: logger);
 
             return _ticker;
         }       
