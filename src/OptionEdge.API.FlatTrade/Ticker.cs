@@ -163,6 +163,9 @@ namespace OptionEdge.API.FlatTrade
 
             if (MessageType == "Text")
             {
+                //var message = Encoding.UTF8.GetString(Data);    
+                //_logger.LogDebug($"Ticker: {message}" );
+
                 var tick = JsonSerializer.Deserialize<Tick>(Data.Take(Count).ToArray(), 0);
                 if (tick.ResponseType == "ck")
                 {
@@ -298,7 +301,7 @@ namespace OptionEdge.API.FlatTrade
             var subscriptionRequst = new SubscribeFeedDataRequest
             {
                 SubscriptionTokens = tokens,
-                RequestType = mode == Constants.TICK_MODE_QUOTE ? Constants.SUBSCRIBE_SOCKET_TICK_DATA_REQUEST_TYPE_MARKET : Constants.SUBSCRIBE_SOCKET_TICK_DATA_REQUEST_TYPE_MARKET,
+                RequestType = mode == Constants.TICK_MODE_QUOTE ? Constants.SUBSCRIBE_SOCKET_TICK_DATA_REQUEST_TYPE_MARKET : Constants.SUBSCRIBE_SOCKET_TICK_DATA_REQUEST_TYPE_DEPTH,
             };
 
             var requestJson = JsonSerializer.ToJsonString(subscriptionRequst);

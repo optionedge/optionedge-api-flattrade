@@ -144,9 +144,18 @@ namespace OptionEdge.API.FlatTrade.Records
         [DataMember(Name = "bp1")]
         public decimal BestBuyPrice1 { get; set; }
 
+        //[JsonPropertyName("bp2")]
+        //[JsonProperty(PropertyName = "bp2")]
+        //[DataMember(Name = "bp2")]
+        //public decimal BestBuyPrice2 { get; set; }
+
         [JsonPropertyName("sp1")]
         [JsonProperty(PropertyName = "sp1")]
         [DataMember(Name = "sp1")]
         public decimal BestSellPrice1 { get; set; }
+
+        //[JsonProperty(PropertyName = "sp2")]
+        //[DataMember(Name = "sp2")]
+        //public decimal BestSellPrice2 { get; set; }
     }
 }
