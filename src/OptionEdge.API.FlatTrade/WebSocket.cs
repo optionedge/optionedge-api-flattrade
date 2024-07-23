@@ -103,10 +103,12 @@ namespace OptionEdge.API.FlatTrade
                         _ws.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None).ContinueWith(callback);
                     }catch(Exception e)
                     {
-                        if(IsConnected())
+                        if (IsConnected())
                             OnError?.Invoke("Error while recieving data. Message:  " + e.Message);
                         else
-                            OnError?.Invoke("Lost ticker connection.");
+                        {
+                            OnError?.Invoke($"FlatTrade WebSocket: Lost ticker connection. {Environment.NewLine} {e.ToString()}");
+                        }
                     }
                 };
 

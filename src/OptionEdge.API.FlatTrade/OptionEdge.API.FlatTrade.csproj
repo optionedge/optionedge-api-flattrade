@@ -10,9 +10,9 @@
     <PackageProjectUrl>https://github.com/proftheta/optionedge-api-FlatTrade</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/proftheta/optionedge-api-FlatTrade</RepositoryUrl>
-    <AssemblyVersion>1.0.1</AssemblyVersion>
+    <AssemblyVersion>1.0.4</AssemblyVersion>
     <Version>$(VersionPrefix)</Version>
-	  <VersionPrefix>1.0.1</VersionPrefix>
+	  <VersionPrefix>1.0.4</VersionPrefix>
 	  <VersionSuffix></VersionSuffix>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
