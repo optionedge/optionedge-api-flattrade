@@ -169,9 +169,12 @@ namespace OptionEdge.API.FlatTrade
                 var tick = JsonSerializer.Deserialize<Tick>(Data.Take(Count).ToArray(), 0);
                 if (tick.ResponseType == "ck")
                 {
-                    _isReady = true;
+                    if (!_isReady)
+                    {
+                        _isReady = true;
 
-                    OnReady();
+                        OnReady();
+                    }
 
                     if (_subscribedTokens.Count > 0)
                         ReSubscribe();

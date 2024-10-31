@@ -72,8 +72,9 @@ namespace OptionEdge.API.FlatTrade.Samples
                         Console.WriteLine("Unable to get request code.");
                         return;
                     }
-                    accessToken = _flatTrade.RefreshAccessToken(requestCode).Result;
-                    SaveAccessTokenToFile(accessToken);
+                    var response = _flatTrade.RefreshAccessToken(requestCode).Result;
+                    if (response.Status == Constants.STATUS_OK)
+                        SaveAccessTokenToFile(response.AccessToken);
                 } else
                 {
                     _flatTrade.SetAccessToken(accessToken);
@@ -82,15 +83,15 @@ namespace OptionEdge.API.FlatTrade.Samples
 
                 // ==========================
                 // Download Master Contracts
-                // ==========================
-                _flatTrade.SaveMasterContracts(Constants.EXCHANGE_NSE, $"flattrade_master_contracts_{DateTime.Now.ToString("dd_MM_yyyy")}_{Constants.EXCHANGE_NSE}.csv");
-                _flatTrade.SaveMasterContracts(Constants.EXCHANGE_BSE, $"flattrade_master_contracts_{DateTime.Now.ToString("dd_MM_yyyy")}_{Constants.EXCHANGE_BSE}.csv");
-                _flatTrade.SaveMasterContracts(Constants.EXCHANGE_NFO, $"flattrade_master_contracts_{DateTime.Now.ToString("dd_MM_yyyy")}_{Constants.EXCHANGE_NFO}.csv");
-                _flatTrade.SaveMasterContracts(Constants.EXCHANGE_BFO, $"flattrade_master_contracts_{DateTime.Now.ToString("dd_MM_yyyy")}_{Constants.EXCHANGE_BFO}.csv");
+                //// ==========================
+                //_flatTrade.SaveMasterContracts(Constants.EXCHANGE_NSE, $"flattrade_master_contracts_{DateTime.Now.ToString("dd_MM_yyyy")}_{Constants.EXCHANGE_NSE}.csv");
+                //_flatTrade.SaveMasterContracts(Constants.EXCHANGE_BSE, $"flattrade_master_contracts_{DateTime.Now.ToString("dd_MM_yyyy")}_{Constants.EXCHANGE_BSE}.csv");
+                //_flatTrade.SaveMasterContracts(Constants.EXCHANGE_NFO, $"flattrade_master_contracts_{DateTime.Now.ToString("dd_MM_yyyy")}_{Constants.EXCHANGE_NFO}.csv");
+                //_flatTrade.SaveMasterContracts(Constants.EXCHANGE_BFO, $"flattrade_master_contracts_{DateTime.Now.ToString("dd_MM_yyyy")}_{Constants.EXCHANGE_BFO}.csv");
 
-                // or load Master Contracts into list
-                var masterContracts = _flatTrade.GetMasterContracts(Constants.EXCHANGE_NFO);
-                masterContracts = _flatTrade.GetMasterContracts(Constants.EXCHANGE_BFO);
+                //// or load Master Contracts into list
+                //var masterContracts = _flatTrade.GetMasterContracts(Constants.EXCHANGE_NFO);
+                //masterContracts = _flatTrade.GetMasterContracts(Constants.EXCHANGE_BFO);
 
                 var limits = _flatTrade.GetLimits();
 

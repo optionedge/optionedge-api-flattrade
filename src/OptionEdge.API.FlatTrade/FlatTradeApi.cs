@@ -486,8 +486,13 @@ namespace OptionEdge.API.FlatTrade
             _accessToken = accessToken;
         }
 
-        public async Task<string> RefreshAccessToken(string requestCode)
+        public async Task<RefreshTokenResponse> RefreshAccessToken(string requestCode)
         {
+            var response = new RefreshTokenResponse
+            {
+                Status = Constants.STATUS_NOT_OK
+            };
+
             var options = new RestClientOptions(_urls["auth.token.url"]);
             var restClient = new RestClient(options);
 
@@ -504,16 +509,30 @@ namespace OptionEdge.API.FlatTrade
 
             request.AddStringBody(JsonConvert.SerializeObject(apiTokenParams), ContentType.Json);
 
-            var apiTokenResult = await restClient.PostAsync<APITokenResult>(request);
+            try
+            {
+                var apiTokenResult = await restClient.PostAsync<APITokenResult>(request);
 
-            if (apiTokenResult.Status == Constants.API_RESPONSE_STATUS_Not_OK)
-                throw new Exception($"Unable to get access token: {apiTokenResult.Status}, Error Message: {apiTokenResult.ErrorMessage}");
+                if (apiTokenResult.Status == Constants.API_RESPONSE_STATUS_Not_OK)
+                {
+                    response.Status = Constants.STATUS_NOT_OK;
+                    response.Message = $"Unable to get access token: {apiTokenResult.Status}, Error Message: {apiTokenResult.ErrorMessage}";
+                }
 
-            if (restClient != null) restClient.Dispose();
+                if (restClient != null) restClient.Dispose();
 
-            _accessToken = apiTokenResult?.Token;
+                _accessToken = apiTokenResult?.Token;
 
-            return _accessToken;
+                response.Status = Constants.STATUS_OK;
+                response.AccessToken = _accessToken;
+            }
+            catch (Exception ex)
+            {
+                response.Status = Constants.STATUS_NOT_OK;
+                response.Message = $"Error getting FlatTrade access token, Error Message: {ex.Message}";
+            }
+
+            return response;
         }
     }
 }
