@@ -33,6 +33,11 @@ namespace OptionEdge.API.FlatTrade
 
         protected readonly RestClient _restClient;
 
+        public FlatTradeApi()
+        {
+
+        }
+
         public static FlatTradeApi CreateInstance(
             string userId, 
             string accountId, 
@@ -245,6 +250,16 @@ namespace OptionEdge.API.FlatTrade
             });
         }
 
+        public GetQuoteResult GetQuote(string exchange, string token)
+        {
+            return ExecutePost<GetQuoteResult>(_urls["get.quotes"], new GetQuoteParams
+            {
+                UserId = _userId,
+                Exchange = exchange,
+                Token = token
+            });
+        }
+
         public  OrderHistoryResult GetSingleOrderHistory(string orderNumber, Func<string, bool> hasOrderStatus, int maxRetries = 5, int retryDelay = 500)
         {
             int retry = 1;
@@ -395,11 +410,11 @@ namespace OptionEdge.API.FlatTrade
                             var contract = new Contract
                             {
                                 Exchange = csv["Exchange"],
-                                InstrumentToken = int.Parse(csv["Token"]),
+                                Token = int.Parse(csv["Token"]),
                                 LotSize = csv.HasHeader("LotSize") && !string.IsNullOrEmpty(csv["LotSize"]) ? int.Parse(csv["LotSize"]) : 0,
-                                InstrumentSymbol = csv["Symbol"],
+                                Symbol = csv["Symbol"],
                                 TradingSymbol = csv.HasHeader("TradingSymbol") ? csv["TradingSymbol"] : null,
-                                InstrumentName = csv.HasHeader("Instrument") ? csv["Instrument"] : null,
+                                Instrument = csv.HasHeader("Instrument") ? csv["Instrument"] : null,
                                 Expiry = csv.HasHeader("Expiry") && !string.IsNullOrEmpty(csv["Expiry"]) ? DateTime.Parse(csv["Expiry"]) : default(DateTime?),
                                 Strike = csv.HasHeader("Strike") && !string.IsNullOrEmpty(csv["Strike"]) ? decimal.Parse(csv["Strike"]) : 0.0m,
                                 OptionType = csv.HasHeader("OptionType") ? csv["OptionType"] : null,
@@ -407,7 +422,7 @@ namespace OptionEdge.API.FlatTrade
 
                             if (string.IsNullOrEmpty(contract.TradingSymbol))
                             {
-                                contract.TradingSymbol = contract.InstrumentSymbol;
+                                contract.TradingSymbol = contract.Symbol;
                             }
 
                             contracts.Add(contract);
@@ -464,6 +479,8 @@ namespace OptionEdge.API.FlatTrade
 
                 if (_enableLogging)
                     Utils.LogMessage(errorMessage);
+                if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                    throw new UnauthorizedAccessException(errorMessage);
 
                 return default(T);
             }

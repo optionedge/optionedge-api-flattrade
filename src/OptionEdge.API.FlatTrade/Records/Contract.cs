@@ -8,17 +8,12 @@ namespace OptionEdge.API.FlatTrade.Records
 {
     public class Contract
     {
-        public string Exchange { get; set; }
-
-        public string ExchangeSegment { get; set; }
+        public string Exchange { get; set; }    
 
         public DateTime? Expiry { get; set; }
 
-        public string InstrumentName { get; set; }
-
-        public string FormattedInstrumentName { get; set; }
-
-        public string InstrumentType { get; set; }
+        public string Instrument { get; set; }
+        
 
         public int LotSize { get; set; }
 
@@ -26,11 +21,11 @@ namespace OptionEdge.API.FlatTrade.Records
 
         public decimal Strike { get; set; }
 
-        public string InstrumentSymbol { get; set; }
+        public string Symbol { get; set; }
 
         public decimal TickSize { get; set; }
 
-        public int InstrumentToken { get; set; }
+        public int Token { get; set; }
 
         public string TradingSymbol { get; set; }
 

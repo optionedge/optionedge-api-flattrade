@@ -132,6 +132,7 @@ namespace OptionEdge.API.FlatTrade
 
         private void _onError(string Message)
         {
+            _isReady = false;
             _logger.LogError($"On Error: {Message}");  
             _timerTick = _interval;
             _timer.Start();
@@ -140,6 +141,7 @@ namespace OptionEdge.API.FlatTrade
 
         private void _onClose()
         {
+            _isReady = false;
             _logger.LogError($"On Close");
             _timer.Stop();
             _timerHeartbeat.Stop();
@@ -148,6 +150,7 @@ namespace OptionEdge.API.FlatTrade
 
         public void Close()
         {
+            _isReady = false;
             _logger.LogError($"Just Close");
             _subscribedTokens?.Clear();
             _ws?.Close();
@@ -155,6 +158,7 @@ namespace OptionEdge.API.FlatTrade
             _timerHeartbeat.Stop();
         }
 
+        private object _tickLock = new object();
         private void _onData(byte[] Data, int Count, string MessageType)
         {
             if (_debug) Utils.LogMessage("On Data event");
@@ -163,31 +167,36 @@ namespace OptionEdge.API.FlatTrade
 
             if (MessageType == "Text")
             {
-                //var message = Encoding.UTF8.GetString(Data);    
-                //_logger.LogDebug($"Ticker: {message}" );
-
                 var tick = JsonSerializer.Deserialize<Tick>(Data.Take(Count).ToArray(), 0);
+
+                if (_debug) Utils.LogMessage($"Data: {JsonSerializer.Serialize(tick)}");
+
+                // 	‘ck’ represents connect acknowledgement
                 if (tick.ResponseType == "ck")
                 {
-                    if (!_isReady)
+                    lock (_tickLock)
                     {
-                        _isReady = true;
-
-                        OnReady();
+                        if (!_isReady)
+                        {
+                            _isReady = true;
+                            if (OnReady != null)
+                                OnReady();
+                        }
                     }
-
-                    if (_subscribedTokens.Count > 0)
-                        ReSubscribe();
-
+                    
+                    //if (_subscribedTokens.Count > 0)
+                    //    ReSubscribe();
                     if (_debug)
                         Utils.LogMessage("Connection acknowledgement received. Websocket connected.");
                 }
                 else if (tick.ResponseType == "tk" || tick.ResponseType == "dk")
                 {
                     OnTick(tick);
-                } else if (tick.ResponseType == "tf" || tick.ResponseType == "df")
+                }
+                else if (tick.ResponseType == "tf" || tick.ResponseType == "df")
                 {
-                    OnTick(tick);
+                    if (OnTick != null)
+                        OnTick(tick);
                 }
                 else
                 {
@@ -198,8 +207,7 @@ namespace OptionEdge.API.FlatTrade
             else if (MessageType == "Close")
             {
                 this.LogInformation("On Message 'Closee'. Close is commented out");
-                // Lets not close
-                // Close();
+                _isReady = false;
             }
         }
 
