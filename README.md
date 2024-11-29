@@ -35,8 +35,10 @@ While creating the instance of FlatTrade REST Api Client set enable logging para
 
 ## Install library
 
+## Warning: Version 2.0.0 has breaking changes. 
+
 ```
-Install-Package OptionEdge.API.FlatTrade -Version 1.0.6
+Install-Package OptionEdge.API.FlatTrade -Version 2.0.0
 ```
 
 ## Sample project
