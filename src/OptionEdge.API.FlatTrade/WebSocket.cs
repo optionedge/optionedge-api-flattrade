@@ -38,7 +38,7 @@ namespace OptionEdge.API.FlatTrade
             return _ws.State == WebSocketState.Open;
         }
 
-        public void Connect(string Url, Dictionary<string, string> headers = null)
+        public async void Connect(string Url, Dictionary<string, string> headers = null)
         {
             _url = Url;
             try
@@ -51,7 +51,7 @@ namespace OptionEdge.API.FlatTrade
                         _ws.Options.SetRequestHeader(key, headers[key]);
                     }
                 }
-                _ws.ConnectAsync(new Uri(_url), CancellationToken.None).Wait();
+                await _ws.ConnectAsync(new Uri(_url), new CancellationToken());
             }
             catch (AggregateException e)
             {
