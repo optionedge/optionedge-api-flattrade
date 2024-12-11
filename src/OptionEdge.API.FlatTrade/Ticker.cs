@@ -161,7 +161,7 @@ namespace OptionEdge.API.FlatTrade
         private object _tickLock = new object();
         private void _onData(byte[] Data, int Count, string MessageType)
         {
-            if (_debug) Utils.LogMessage("On Data event");
+         
 
             _timerTick = _interval;
 
