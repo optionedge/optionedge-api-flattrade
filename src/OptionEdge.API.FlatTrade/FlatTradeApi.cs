@@ -362,6 +362,8 @@ namespace OptionEdge.API.FlatTrade
             httpClient.Timeout = new TimeSpan(0, 0, 30);
             httpClient.DefaultRequestHeaders.Clear();
 
+            if (!_urlsContractMaster.ContainsKey(exchange)) return;
+
             var url = _urlsContractMaster[exchange];
 
             using (var response = httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead).Result)

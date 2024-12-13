@@ -81,6 +81,8 @@ namespace OptionEdge.API.FlatTrade
                     try
                     {
                         byte[] tempBuff = new byte[_bufferLength];
+                        if (_ws.State != WebSocketState.Open) return;
+
                         int offset = t.Result.Count;
                         bool endOfMessage = t.Result.EndOfMessage;
 
