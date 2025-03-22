@@ -65,7 +65,7 @@ namespace OptionEdge.API.FlatTrade.Samples
 
                 if (string.IsNullOrEmpty(accessToken))
                 {
-                    var requestCode = await LoginAndGetRequestCode(false);
+                    var requestCode = await LoginAndGetRequestCode(true);
 
                     if (string.IsNullOrEmpty(requestCode))
                     {
@@ -93,7 +93,7 @@ namespace OptionEdge.API.FlatTrade.Samples
                 //var masterContracts = _flatTrade.GetMasterContracts(Constants.EXCHANGE_NFO);
                 //masterContracts = _flatTrade.GetMasterContracts(Constants.EXCHANGE_BFO);
 
-                var limits = _flatTrade.GetLimits();
+                //var limits = _flatTrade.GetLimits();
 
                 // ==========================
                 // Place Order - Regular
@@ -118,19 +118,19 @@ namespace OptionEdge.API.FlatTrade.Samples
 
                 // Create Ticker instance
                 // No need to provide the userId, apiKey, it will be automatically set
-                _ticker = _flatTrade.CreateTicker();
+                //_ticker = _flatTrade.CreateTicker();
 
                 //// Setup event handlers
-                _ticker.OnTick += _ticker_OnTick;
-                _ticker.OnConnect += _ticker_OnConnect;
-                _ticker.OnClose += _ticker_OnClose;
-                _ticker.OnReconnect += _ticker_OnReconnect;
-                _ticker.OnReady += _ticker_OnReady;
+                //_ticker.OnTick += _ticker_OnTick;
+                //_ticker.OnConnect += _ticker_OnConnect;
+                //_ticker.OnClose += _ticker_OnClose;
+                //_ticker.OnReconnect += _ticker_OnReconnect;
+                //_ticker.OnReady += _ticker_OnReady;
 
                 //Connect the ticker to start receiving the live feeds
                 //DO NOT FORGOT TO CONNECT else you will not receive any feed
 
-                _ticker.Connect();
+                //_ticker.Connect();
 
                 // Single order history
 
@@ -140,7 +140,18 @@ namespace OptionEdge.API.FlatTrade.Samples
 
                 // var contracts = _FlatTrade.GetMasterContracts(Constants.EXCHANGE_NFO).Result;
 
-                // var history = _FlatTrade.GetHistoricalData(Constants.EXCHANGE_NFO, 37516, DateTime.Now.AddDays(-3), DateTime.Now, "5", false);
+                DateTime today = DateTime.Now.Date.AddDays(-1);
+                double start = ConvertToUnixTimestamp(today);
+
+                var history = _flatTrade.GetHistoricalData(new HistoryDataParams
+                {
+                    AccountId = _settings.AccountId,
+                    Exchange = Constants.EXCHANGE_NSE,
+                    From = "1742538300",
+                    InstrumentToken = "22",
+                    Interval = Constants.HISTORICAL_DATA_RESOLUTION_1_MINUTE,
+                    //To = 1742551200
+                });
 
             }
             catch (Exception ex)
@@ -150,6 +161,14 @@ namespace OptionEdge.API.FlatTrade.Samples
 
             Console.ReadLine();
         }
+
+        private  double ConvertToUnixTimestamp(DateTime date)
+        {
+            DateTime origin = new DateTime(1970, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc);
+            TimeSpan diff = date.ToUniversalTime() - origin;
+            return Math.Floor(diff.TotalSeconds);
+        }
+
 
         private void SaveAccessTokenToFile(string accessToken)
         {

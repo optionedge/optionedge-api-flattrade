@@ -7,29 +7,34 @@ namespace OptionEdge.API.FlatTrade.Records
 {
     public class HistoryDataResult
     {
-        [JsonPropertyName("s")]
+        [JsonPropertyName("stat")]
         public string Status { get; set; }
 
-        [JsonPropertyName("t")]
-        public long[] Time { get; set; }
+        [JsonPropertyName("time")]
+        public string Time { get; set; }
 
-        [JsonPropertyName("o")]
-        public decimal[] Open { get; set; }
+        [JsonPropertyName("into")]
+        public double Open { get; set; }
 
-        [JsonPropertyName("h")]
-        public decimal[] High { get; set; }
+        [JsonPropertyName("inth")]
+        public double High { get; set; }
 
-        [JsonPropertyName("l")]
-        public decimal[] Low { get; set; }
+        [JsonPropertyName("intl")]
+        public double Low { get; set; }
 
-        [JsonPropertyName("c")]
-        public decimal[] Close { get; set; }
+        [JsonPropertyName("intc")]
+        public double Close { get; set; }
+
+        [JsonPropertyName("intv")]
+        public int VolumeInterval { get; set; }
+
+        [JsonPropertyName("intoi")]
+        public int OIInterval { get; set; }
+
+        [JsonPropertyName("oi")]
+        public double OI { get; set; }
 
         [JsonPropertyName("v")]
-        public decimal[] Volume { get; set; }
-
-        public decimal IV { get; set; }
-
-        public List<HistoryCandle> Candles { get; set; } = new List<HistoryCandle>();
+        public double Volume { get; set; }
     }
 }

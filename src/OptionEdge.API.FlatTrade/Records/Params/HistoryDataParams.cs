@@ -1,29 +1,33 @@
 ﻿using Newtonsoft.Json;
+using OptionEdge.API.FlatTrade.Records;
 using System.Linq;
 
 namespace OptionEdge.API.FlatTrade
 {
-    public class HistoryDataParams
+    public class HistoryDataParams :BaseParams
     {
+        [JsonProperty("exch")]
         public string Exchange;
 
-        public int InstrumentToken;
+        [JsonProperty("token")]
+        public string InstrumentToken;
 
         /// <summary>
-        /// "1", "2", "3", "4", "5", "10", "15", "30", "60", "120", "180", "240", "D", "1W", "1M"
+        /// "1", "3", "5", "10", "15", "30", "60", "120"
         /// </summary>
+        [JsonProperty("intrv")]
         public string Interval;
 
         /// <summary>
         /// Unix Timestamp (seconds)
         /// </summary>
-        public long From;
+        [JsonProperty("st")]
+        public string From;
 
         /// <summary>
         /// Unix Timestamp (seconds)
         /// </summary>
-        public long To;
-
-        public bool Index { get; set; }
+        [JsonProperty("et")]
+        public string To;
     }
 }
