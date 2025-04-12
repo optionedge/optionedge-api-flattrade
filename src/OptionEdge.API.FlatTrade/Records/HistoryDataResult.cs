@@ -14,16 +14,16 @@ namespace OptionEdge.API.FlatTrade.Records
         public string Time { get; set; }
 
         [JsonPropertyName("into")]
-        public double Open { get; set; }
+        public decimal Open { get; set; }
 
         [JsonPropertyName("inth")]
-        public double High { get; set; }
+        public decimal High { get; set; }
 
         [JsonPropertyName("intl")]
-        public double Low { get; set; }
+        public decimal Low { get; set; }
 
         [JsonPropertyName("intc")]
-        public double Close { get; set; }
+        public decimal Close { get; set; }
 
         [JsonPropertyName("intv")]
         public int VolumeInterval { get; set; }
@@ -32,9 +32,9 @@ namespace OptionEdge.API.FlatTrade.Records
         public int OIInterval { get; set; }
 
         [JsonPropertyName("oi")]
-        public double OI { get; set; }
+        public decimal OI { get; set; }
 
         [JsonPropertyName("v")]
-        public double Volume { get; set; }
+        public decimal Volume { get; set; }
     }
 }

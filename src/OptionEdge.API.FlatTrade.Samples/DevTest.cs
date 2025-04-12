@@ -140,6 +140,40 @@ namespace OptionEdge.API.FlatTrade.Samples
 
                 // var contracts = _FlatTrade.GetMasterContracts(Constants.EXCHANGE_NFO).Result;
 
+
+                // Main Leg
+                BasketMarginParams basketMarginParams = new BasketMarginParams
+                {
+                    BasketItems = null,
+                    Exchange = "NFO",
+                    TradingSymbol = "FINNIFTY24APR25P22800",
+                    Quantity = "50",
+                    Price = "0",
+                    Product = "M",
+                    TransactionType = "S",
+                    PriceType = "MKT",
+                };
+
+                // Additional Legs
+                var basketItems = new List<BasketOrderItem>
+                    {
+                        new BasketOrderItem
+                        {
+                            Exchange = "NFO",
+                            TradingSymbol = "FINNIFTY24APR25C22800",
+                            Quantity = "50",
+                            Price = "0", // 0 for MKT
+                            Product = "M",
+                            TransactionType = "B",
+                            PriceType = "MKT",
+                            TriggerPrice = "0",
+                        },
+                    };
+
+                var marginResult = _flatTrade.GetBasketMargin(basketMarginParams);
+                Console.WriteLine($"Margin Used: {marginResult.MarginUsed}, Status: {marginResult.Status}");
+
+
                 DateTime today = DateTime.Now.Date.AddDays(-1);
                 double start = ConvertToUnixTimestamp(today);
 

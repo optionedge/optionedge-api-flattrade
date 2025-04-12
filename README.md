@@ -38,7 +38,7 @@ While creating the instance of FlatTrade REST Api Client set enable logging para
 ## Warning: Version 2.0.0 has breaking changes. 
 
 ```
-Install-Package OptionEdge.API.FlatTrade -Version 2.0.1
+Install-Package OptionEdge.API.FlatTrade -Version 2.0.4
 ```
 
 ## Sample project
@@ -195,6 +195,40 @@ var accountDetails = _flatTrade.GetAccountDetails();
 var funds = _flatTrade.GetFunds();
 ```
 
+## Basket Margin
+```csharp
+// Main Leg
+BasketMarginParams basketMarginParams = new BasketMarginParams
+{
+    BasketItems = null,
+    Exchange = "NFO",
+    TradingSymbol = "FINNIFTY24APR25P22800",
+    Quantity = "50",
+    Price = "0",
+    Product = "M",
+    TransactionType = "S",
+    PriceType = "MKT",
+};
+
+// Additional Legs (Array of legs)
+var basketItems = new List<BasketOrderItem>
+    {
+        new BasketOrderItem
+        {
+            Exchange = "NFO",
+            TradingSymbol = "FINNIFTY24APR25C22800",
+            Quantity = "50",
+            Price = "0", // 0 for MKT
+            Product = "M",
+            TransactionType = "B",
+            PriceType = "MKT",
+            TriggerPrice = "0",
+        },
+    };
+
+var marginResult = _flatTrade.GetBasketMargin(basketMarginParams);
+Console.WriteLine($"Margin Used: {marginResult.MarginUsed}, Status: {marginResult.Status}");
+```
 
 ## Historical Data
 

@@ -383,6 +383,14 @@ namespace OptionEdge.API.FlatTrade
             return contracts;
         }
 
+        public BasketMarginResult GetBasketMargin(BasketMarginParams basketMarginParams)
+        {
+            basketMarginParams.UserId = _userId;
+            basketMarginParams.AccountId = _accountId;
+
+            return ExecutePost<BasketMarginResult>(_urls["basket.margin"], basketMarginParams);
+        }
+
         public T ExecutePost<T>(string endpoint, object inputParams = null) where T : class
         {
             return Execute<T>(endpoint, inputParams, Method.Post);
