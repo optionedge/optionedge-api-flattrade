@@ -35,15 +35,25 @@ namespace OptionEdge.API.FlatTrade
         private int _timerHeartbeatInterval = 40000;
         
         private System.Timers.Timer _connectionHealthCheck;
-        private int _connectionHealthCheckInterval = 30000; // Reduced to 30 seconds for faster detection
-        private int _connectionTimeout = 10000;
+        private int _connectionHealthCheckInterval = 5000; // Reduced to 5 seconds for much faster detection
+        private int _connectionTimeout = 5000; // Reduced timeout to 5 seconds
         private DateTime _lastHeartbeatResponse = DateTime.MinValue;
         private DateTime _lastHeartbeatSent = DateTime.MinValue;
         private int _consecutiveHealthCheckFailures = 0;
-        private int _maxHealthCheckFailures = 2; // Reduced to 2 for faster reconnection
+        private int _maxHealthCheckFailures = 1; // Reduced to 1 for immediate reconnection
         private bool _networkWasDown = false;
         private DateTime _lastForceReconnectAttempt = DateTime.MinValue;
-        private readonly TimeSpan _minForceReconnectInterval = TimeSpan.FromSeconds(10);
+        private readonly TimeSpan _minForceReconnectInterval = TimeSpan.FromSeconds(2); // Reduced to allow more frequent reconnection attempts
+        
+        // Dynamic reconnection strategy
+        private bool _aggressiveReconnectMode = true;
+        private int _reconnectCycleCount = 0;
+        private readonly int _reconnectCycleThreshold = 5; // Switch between aggressive and normal mode every 5 cycles
+        
+        // Network change detection
+        private System.Timers.Timer _networkCheckTimer;
+        private int _networkCheckInterval = 2000; // Check network every 2 seconds
+        private bool _lastNetworkState = true;
 
         private IWebSocket _ws;
 
@@ -116,6 +126,12 @@ namespace OptionEdge.API.FlatTrade
             _connectionHealthCheck = new System.Timers.Timer();
             _connectionHealthCheck.Elapsed += _connectionHealthCheck_Elapsed;
             _connectionHealthCheck.Interval = _connectionHealthCheckInterval;
+            
+            // Initialize network check timer
+            _networkCheckTimer = new System.Timers.Timer();
+            _networkCheckTimer.Elapsed += _networkCheckTimer_Elapsed;
+            _networkCheckTimer.Interval = _networkCheckInterval;
+            _networkCheckTimer.Start(); // Start immediately to detect network changes
         }
 
         private void _timerHeartbeat_Elapsed(object sender, System.Timers.ElapsedEventArgs e)
@@ -124,6 +140,36 @@ namespace OptionEdge.API.FlatTrade
             {
                 SendHeartBeat();
                 _lastHeartbeatSent = DateTime.Now;
+            }
+        }
+        
+        private void _networkCheckTimer_Elapsed(object sender, System.Timers.ElapsedEventArgs e)
+        {
+            try
+            {
+                bool currentNetworkState = IsNetworkAvailable();
+                
+                // If network state changed from down to up
+                if (!_lastNetworkState && currentNetworkState)
+                {
+                    LogWarning("Network just became available. Triggering immediate reconnection.");
+                    _networkWasDown = false;
+                    _aggressiveReconnectMode = true; // Switch to aggressive mode
+                    _consecutiveHealthCheckFailures = _maxHealthCheckFailures; // Force immediate reconnection
+                    ForceReconnect();
+                }
+                // If network state changed from up to down
+                else if (_lastNetworkState && !currentNetworkState)
+                {
+                    LogWarning("Network just became unavailable.");
+                    _networkWasDown = true;
+                }
+                
+                _lastNetworkState = currentNetworkState;
+            }
+            catch (Exception ex)
+            {
+                LogError("Error in network check timer", ex);
             }
         }
         
@@ -231,9 +277,55 @@ namespace OptionEdge.API.FlatTrade
         {
             try
             {
-                // Simple check - if we can resolve a DNS name, network is likely available
-                // This is a basic check and might not work in all environments
-                return System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable();
+                // More reliable cross-platform network check
+                // Try to connect to a reliable DNS server (Google's public DNS)
+                // This is more reliable than NetworkInterface.GetIsNetworkAvailable()
+                // and works consistently across Windows, macOS, and Linux
+                try
+                {
+                    using (var tcpClient = new System.Net.Sockets.TcpClient())
+                    {
+                        // Set a timeout for the connection attempt
+                        var connectTask = tcpClient.ConnectAsync("8.8.8.8", 53);
+                        var timeoutTask = Task.Delay(2000); // 2 second timeout
+                        
+                        // Wait for either connection or timeout
+                        var completedTask = Task.WhenAny(connectTask, timeoutTask).Result;
+                        
+                        // If connection task completed first, network is available
+                        return completedTask == connectTask && tcpClient.Connected;
+                    }
+                }
+                catch
+                {
+                    // If we can't connect to Google DNS, try Cloudflare's DNS as a backup
+                    try
+                    {
+                        using (var tcpClient = new System.Net.Sockets.TcpClient())
+                        {
+                            var connectTask = tcpClient.ConnectAsync("1.1.1.1", 53);
+                            var timeoutTask = Task.Delay(2000);
+                            var completedTask = Task.WhenAny(connectTask, timeoutTask).Result;
+                            return completedTask == connectTask && tcpClient.Connected;
+                        }
+                    }
+                    catch
+                    {
+                        // If we can't connect to either DNS, try a fallback method
+                        try
+                        {
+                            // Fallback to checking if any network interface is up
+                            // This is less reliable but better than nothing
+                            return System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable();
+                        }
+                        catch
+                        {
+                            // If all else fails, assume network is available
+                            // This prevents unnecessary reconnection attempts
+                            return true;
+                        }
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -246,8 +338,8 @@ namespace OptionEdge.API.FlatTrade
         {
             try
             {
-                // Prevent too frequent force reconnection attempts
-                if (DateTime.Now - _lastForceReconnectAttempt < _minForceReconnectInterval)
+                // In aggressive mode, ignore the minimum interval
+                if (!_aggressiveReconnectMode && DateTime.Now - _lastForceReconnectAttempt < _minForceReconnectInterval)
                 {
                     LogWarning($"Force reconnect attempt too soon after previous attempt, delaying. Will try again in {(_minForceReconnectInterval - (DateTime.Now - _lastForceReconnectAttempt)).TotalSeconds:0.0} seconds.");
                     return;
@@ -255,7 +347,16 @@ namespace OptionEdge.API.FlatTrade
                 
                 _lastForceReconnectAttempt = DateTime.Now;
                 
-                LogWarning("FORCING RECONNECTION - Aggressive reconnect strategy");
+                // Update reconnect cycle count and toggle mode if needed
+                _reconnectCycleCount++;
+                if (_reconnectCycleCount >= _reconnectCycleThreshold)
+                {
+                    _aggressiveReconnectMode = !_aggressiveReconnectMode;
+                    _reconnectCycleCount = 0;
+                    LogWarning($"Switching reconnection mode to: {(_aggressiveReconnectMode ? "AGGRESSIVE" : "NORMAL")}");
+                }
+                
+                LogWarning($"FORCING RECONNECTION - {(_aggressiveReconnectMode ? "Aggressive" : "Normal")} reconnect strategy");
                 
                 // Make sure reconnect is enabled
                 if (!_isReconnect)
@@ -291,9 +392,10 @@ namespace OptionEdge.API.FlatTrade
                     _timerHeartbeat.Stop();
                     _connectionHealthCheck.Stop();
                     
-                    _timerTick = _interval;
+                    _timerTick = _aggressiveReconnectMode ? 1 : _interval; // Use very short interval in aggressive mode
                     _timer.Start();
                     _connectionHealthCheck.Start();
+                    _networkCheckTimer.Start();
                 }
                 catch (Exception timerEx)
                 {
@@ -435,10 +537,12 @@ namespace OptionEdge.API.FlatTrade
                 _timer?.Stop();
                 _timerHeartbeat?.Stop();
                 _connectionHealthCheck?.Stop();
+                _networkCheckTimer?.Stop();
                 
                 _timer?.Dispose();
                 _timerHeartbeat?.Dispose();
                 _connectionHealthCheck?.Dispose();
+                _networkCheckTimer?.Dispose();
                 
                 if (_ws != null)
                 {
@@ -468,6 +572,7 @@ namespace OptionEdge.API.FlatTrade
                 _timer.Stop();
                 _timerHeartbeat.Stop();
                 _connectionHealthCheck.Stop();
+                // Keep network check timer running to detect network changes
                 OnClose?.Invoke();
                 
                 if (_isReconnect)
@@ -493,6 +598,7 @@ namespace OptionEdge.API.FlatTrade
                 _timer.Stop();
                 _timerHeartbeat.Stop();
                 _connectionHealthCheck.Stop();
+                // Keep network check timer running to detect network changes
             }
             catch (Exception ex)
             {
@@ -622,6 +728,7 @@ namespace OptionEdge.API.FlatTrade
             _timer.Start();
             _timerHeartbeat.Start();
             _connectionHealthCheck.Start();
+            _networkCheckTimer.Start();
 
             OnConnect?.Invoke();
         }
@@ -649,22 +756,43 @@ namespace OptionEdge.API.FlatTrade
                     {
                         LogWarning($"Connecting to {_socketUrl}");
                         
-                        // Try to connect with timeout
+                        // Try to connect with timeout and proper exception handling
                         var connectTask = Task.Run(() => {
                             try {
                                 _ws.Connect(_socketUrl);
+                            }
+                            catch (WebSocketException wsEx)
+                            {
+                                LogError($"WebSocket connection error: {wsEx.WebSocketErrorCode}", wsEx);
+                                // Immediately trigger reconnection for certain errors
+                                if (_aggressiveReconnectMode)
+                                {
+                                    _consecutiveHealthCheckFailures = _maxHealthCheckFailures;
+                                }
                             }
                             catch (Exception connectEx) {
                                 LogError("Error in WebSocket.Connect", connectEx);
                             }
                         });
                         
-                        // Wait for connection with timeout
-                        bool connectCompleted = Task.WaitAll(new[] { connectTask }, 5000);
+                        bool connectCompleted = false;
+                        try
+                        {
+                            // Wait for connection with timeout
+                            connectCompleted = Task.WaitAll(new[] { connectTask }, _aggressiveReconnectMode ? 2000 : 5000);
+                        }
+                        catch (AggregateException ae)
+                        {
+                            // Handle and observe the exception
+                            foreach (var ex in ae.InnerExceptions)
+                            {
+                                LogError($"Connection task exception: {ex.GetType().Name}", ex);
+                            }
+                        }
                         
                         if (!connectCompleted)
                         {
-                            LogWarning("Connect operation timed out after 5 seconds");
+                            LogWarning($"Connect operation timed out after {(_aggressiveReconnectMode ? 2 : 5)} seconds");
                         }
                         
                         // Check if connection was successful
@@ -714,8 +842,8 @@ namespace OptionEdge.API.FlatTrade
                         return;
                     }
                     
-                    // Prevent too frequent reconnection attempts
-                    if (DateTime.Now - _lastReconnectAttempt < _minReconnectInterval)
+                    // In aggressive mode, ignore the minimum interval
+                    if (!_aggressiveReconnectMode && DateTime.Now - _lastReconnectAttempt < _minReconnectInterval)
                     {
                         LogInformation("Reconnect attempt too soon after previous attempt, delaying");
                         return;
@@ -763,15 +891,24 @@ namespace OptionEdge.API.FlatTrade
                         LogInformation($"Reconnect attempt #{_retryCount} of {_retries}");
                         Connect();
                         
-                        // Use shorter backoff for initial retries, then exponential
-                        if (_retryCount <= 3)
+                        // Dynamic reconnection strategy
+                        if (_aggressiveReconnectMode)
                         {
-                            _timerTick = _interval;
+                            // In aggressive mode, use very short intervals
+                            _timerTick = Math.Min(_retryCount, 3); // 1, 2, 3 seconds for first attempts
                         }
                         else
                         {
-                            // Exponential backoff with max of 60 seconds
-                            _timerTick = (int)Math.Min(Math.Pow(1.5, _retryCount) * _interval, 60);
+                            // Use shorter backoff for initial retries, then exponential
+                            if (_retryCount <= 3)
+                            {
+                                _timerTick = _interval;
+                            }
+                            else
+                            {
+                                // Exponential backoff with max of 60 seconds
+                                _timerTick = (int)Math.Min(Math.Pow(1.5, _retryCount) * _interval, 60);
+                            }
                         }
                         
                         LogInformation($"Next reconnect attempt in {_timerTick} seconds if needed");
