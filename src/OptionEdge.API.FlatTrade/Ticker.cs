@@ -283,47 +283,26 @@ namespace OptionEdge.API.FlatTrade
                 // and works consistently across Windows, macOS, and Linux
                 try
                 {
-                    using (var tcpClient = new System.Net.Sockets.TcpClient())
-                    {
-                        // Set a timeout for the connection attempt
-                        var connectTask = tcpClient.ConnectAsync("8.8.8.8", 53);
-                        var timeoutTask = Task.Delay(2000); // 2 second timeout
-                        
-                        // Wait for either connection or timeout
-                        var completedTask = Task.WhenAny(connectTask, timeoutTask).Result;
-                        
-                        // If connection task completed first, network is available
-                        return completedTask == connectTask && tcpClient.Connected;
-                    }
+                    // Use a simpler approach that doesn't cause unobserved task exceptions
+                    return CheckNetworkConnectivity();
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // If we can't connect to Google DNS, try Cloudflare's DNS as a backup
+                    LogError("Primary network check failed", ex);
+                    
+                    // If we can't connect to either DNS, try a fallback method
                     try
                     {
-                        using (var tcpClient = new System.Net.Sockets.TcpClient())
-                        {
-                            var connectTask = tcpClient.ConnectAsync("1.1.1.1", 53);
-                            var timeoutTask = Task.Delay(2000);
-                            var completedTask = Task.WhenAny(connectTask, timeoutTask).Result;
-                            return completedTask == connectTask && tcpClient.Connected;
-                        }
+                        // Fallback to checking if any network interface is up
+                        // This is less reliable but better than nothing
+                        return System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable();
                     }
-                    catch
+                    catch (Exception fallbackEx)
                     {
-                        // If we can't connect to either DNS, try a fallback method
-                        try
-                        {
-                            // Fallback to checking if any network interface is up
-                            // This is less reliable but better than nothing
-                            return System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable();
-                        }
-                        catch
-                        {
-                            // If all else fails, assume network is available
-                            // This prevents unnecessary reconnection attempts
-                            return true;
-                        }
+                        LogError("Fallback network check failed", fallbackEx);
+                        // If all else fails, assume network is available
+                        // This prevents unnecessary reconnection attempts
+                        return true;
                     }
                 }
             }
@@ -331,6 +310,70 @@ namespace OptionEdge.API.FlatTrade
             {
                 LogError("Error checking network availability", ex);
                 return true; // Assume network is available if we can't check
+            }
+        }
+        
+        private bool CheckNetworkConnectivity()
+        {
+            // This method uses a synchronous approach to avoid unobserved task exceptions
+            try
+            {
+                // Try to connect to Google DNS
+                using (var client = new System.Net.Sockets.TcpClient())
+                {
+                    // Set a short timeout
+                    client.ReceiveTimeout = 1000;
+                    client.SendTimeout = 1000;
+                    
+                    // Use BeginConnect which allows timeout without causing unobserved exceptions
+                    var result = client.BeginConnect("8.8.8.8", 53, null, null);
+                    
+                    // Wait for the connection with a timeout
+                    bool success = result.AsyncWaitHandle.WaitOne(1000, true);
+                    
+                    if (success && client.Connected)
+                    {
+                        // Properly close the connection
+                        client.EndConnect(result);
+                        return true;
+                    }
+                    else
+                    {
+                        // Close the socket if the connection attempt failed but the operation didn't time out
+                        if (success)
+                        {
+                            try { client.EndConnect(result); } catch { }
+                        }
+                        
+                        // Try Cloudflare DNS as backup
+                        using (var backupClient = new System.Net.Sockets.TcpClient())
+                        {
+                            backupClient.ReceiveTimeout = 1000;
+                            backupClient.SendTimeout = 1000;
+                            
+                            var backupResult = backupClient.BeginConnect("1.1.1.1", 53, null, null);
+                            bool backupSuccess = backupResult.AsyncWaitHandle.WaitOne(1000, true);
+                            
+                            if (backupSuccess && backupClient.Connected)
+                            {
+                                backupClient.EndConnect(backupResult);
+                                return true;
+                            }
+                            else
+                            {
+                                if (backupSuccess)
+                                {
+                                    try { backupClient.EndConnect(backupResult); } catch { }
+                                }
+                                return false;
+                            }
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                return false;
             }
         }
         
