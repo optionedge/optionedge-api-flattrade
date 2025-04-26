@@ -25,6 +25,8 @@ namespace OptionEdge.API.FlatTrade
         public event OnSocketDataHandler OnData;
         public event OnSocketErrorHandler OnError;
 
+        CancellationTokenSource _cts = null;
+
         public WebSocket(int BufferLength = 2000000)
         {            
             _bufferLength = BufferLength;
@@ -38,89 +40,80 @@ namespace OptionEdge.API.FlatTrade
             return _ws.State == WebSocketState.Open;
         }
 
-        public async void Connect(string Url, Dictionary<string, string> headers = null)
+        public async Task ConnectAsync(string url, Dictionary<string, string> headers = null)
         {
-            _url = Url;
+            _url = url;
+            _cts = new CancellationTokenSource(); // Store a cancellation token source
+            byte[] buffer = new byte[_bufferLength];
+
             try
             {
                 _ws = new ClientWebSocket();
                 if (headers != null)
                 {
-                    foreach (string key in headers.Keys)
+                    foreach (var header in headers)
                     {
-                        _ws.Options.SetRequestHeader(key, headers[key]);
+                        _ws.Options.SetRequestHeader(header.Key, header.Value);
                     }
                 }
-                await _ws.ConnectAsync(new Uri(_url), new CancellationToken());
-            }
-            catch (AggregateException e)
-            {
-                var aggregateErrorMessage = e.InnerExceptions.Select(x => x.Message).Aggregate((x,y) => x + Environment.NewLine + y);
 
-                OnError?.Invoke("Error while connecting websocket. Message: " + e.ToString() + Environment.NewLine + aggregateErrorMessage);
-                if (e.ToString().Contains("Forbidden") && e.ToString().Contains("403"))
-                {
-                    OnClose?.Invoke();
-                }
-                return;
+                await _ws.ConnectAsync(new Uri(_url), _cts.Token);
+                OnConnect?.Invoke();
+
+                // Start receiving data
+                _ = Task.Run(() => ReceiveLoopAsync(buffer, _cts.Token));
             }
             catch (Exception e)
             {
-                OnError?.Invoke("Error while connecting websocket. Message:  " + e.Message);
-                return;
-            }
-            OnConnect?.Invoke();
-
-            byte[] buffer = new byte[_bufferLength];
-            Action<Task<WebSocketReceiveResult>> callback = null;
-
-            try
-            {
-               callback = t =>
-                {
-                    try
-                    {
-                        byte[] tempBuff = new byte[_bufferLength];
-                        if (_ws.State != WebSocketState.Open) return;
-
-                        int offset = t.Result.Count;
-                        bool endOfMessage = t.Result.EndOfMessage;
-
-                        while (!endOfMessage)
-                        {
-                            WebSocketReceiveResult result = _ws.ReceiveAsync(new ArraySegment<byte>(tempBuff), CancellationToken.None).Result;
-                            Array.Copy(tempBuff, 0, buffer, offset, result.Count);
-                            offset += result.Count;
-                            endOfMessage = result.EndOfMessage;
-                        }
-
-                        try
-                        {
-                            OnData?.Invoke(buffer, offset, t.Result.MessageType.ToString());
-                        }catch (Exception e)
-                        {
-                            OnError?.Invoke($"Error in socket data processing handler.{e.ToString()}");
-                        }
-
-                        _ws.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None).ContinueWith(callback);
-                    }catch(Exception e)
-                    {
-                        if (IsConnected())
-                            OnError?.Invoke("Error while recieving data. Message:  " + e.Message);
-                        else
-                        {
-                            OnError?.Invoke($"FlatTrade WebSocket: Lost ticker connection. {Environment.NewLine} {e.ToString()}");
-                        }
-                    }
-                };
-
-                _ws.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None).ContinueWith(callback);
-            }
-            catch (Exception e)
-            {
-                OnError?.Invoke("Error while recieving data. Message:  " + e.Message);
+                OnError?.Invoke($"Error while connecting websocket. Message: {e}");
+                OnClose?.Invoke();
             }
         }
+
+        private async Task ReceiveLoopAsync(byte[] buffer, CancellationToken token)
+        {
+            try
+            {
+                while (_ws.State == WebSocketState.Open && !token.IsCancellationRequested)
+                {
+                    var result = await _ws.ReceiveAsync(new ArraySegment<byte>(buffer), token);
+
+                    if (result.MessageType == WebSocketMessageType.Close)
+                    {
+                        await _ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closed by client", token);
+                        OnClose?.Invoke();
+                        break;
+                    }
+
+                    int totalBytes = result.Count;
+                    bool endOfMessage = result.EndOfMessage;
+
+                    while (!endOfMessage)
+                    {
+                        var tempResult = await _ws.ReceiveAsync(new ArraySegment<byte>(buffer, totalBytes, buffer.Length - totalBytes), token);
+                        totalBytes += tempResult.Count;
+                        endOfMessage = tempResult.EndOfMessage;
+                    }
+
+                    try
+                    {
+                        OnData?.Invoke(buffer, totalBytes, result.MessageType.ToString());
+                    }
+                    catch (Exception ex)
+                    {
+                        OnError?.Invoke($"Error in socket data processing handler. {ex}");
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                if (IsConnected())
+                    OnError?.Invoke($"Error while receiving data. Message: {e.Message}");
+                else
+                    OnError?.Invoke($"WebSocket connection lost: {e}");
+            }
+        }
+
 
         public void Send(string Message)
         {

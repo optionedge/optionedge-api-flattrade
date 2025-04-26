@@ -49,7 +49,12 @@ namespace OptionEdge.API.FlatTrade
         private bool _aggressiveReconnectMode = true;
         private int _reconnectCycleCount = 0;
         private readonly int _reconnectCycleThreshold = 5; // Switch between aggressive and normal mode every 5 cycles
+        private int _consecutiveFailedReconnects = 0;
+        private readonly int _maxConsecutiveFailedReconnects = 10; // After this many failures, recreate the WebSocket
         
+        // System sleep/wake detection
+        private DateTime _lastNetworkCheckTime = DateTime.MinValue;
+                
         // Network change detection
         private System.Timers.Timer _networkCheckTimer;
         private int _networkCheckInterval = 2000; // Check network every 2 seconds
@@ -147,6 +152,19 @@ namespace OptionEdge.API.FlatTrade
         {
             try
             {
+                // Check if application was suspended (e.g., laptop sleep)
+                var now = DateTime.Now;
+                if (_lastNetworkCheckTime.AddSeconds(10) < now && _lastNetworkCheckTime != DateTime.MinValue)
+                {
+                    LogWarning($"Detected possible system sleep/suspension. Last check was {(now - _lastNetworkCheckTime).TotalSeconds:0.0} seconds ago.");
+                    // Force reconnection after system resume
+                    _aggressiveReconnectMode = true;
+                    _consecutiveHealthCheckFailures = _maxHealthCheckFailures;
+                    ForceReconnect();
+                }
+                _lastNetworkCheckTime = now;
+                
+                // Check network availability
                 bool currentNetworkState = IsNetworkAvailable();
                 
                 // If network state changed from down to up
@@ -165,7 +183,7 @@ namespace OptionEdge.API.FlatTrade
                     _networkWasDown = true;
                 }
                 
-                _lastNetworkState = currentNetworkState;
+                _lastNetworkState = currentNetworkState;                
             }
             catch (Exception ex)
             {
@@ -377,7 +395,7 @@ namespace OptionEdge.API.FlatTrade
             }
         }
         
-        private void ForceReconnect()
+        private async void ForceReconnect()
         {
             try
             {
@@ -498,7 +516,7 @@ namespace OptionEdge.API.FlatTrade
                     _ws.OnClose += _onClose;
                     _ws.OnError += _onError;
                     
-                    _ws.Connect(_socketUrl);
+                    await _ws.ConnectAsync(_socketUrl);
                 }
                 catch (Exception lastEx)
                 {
@@ -651,6 +669,7 @@ namespace OptionEdge.API.FlatTrade
 
         private readonly object _tickLock = new object();
         private readonly object _connectionLock = new object();
+
         private void _onData(byte[] Data, int Count, string MessageType)
         {
             try
@@ -800,9 +819,9 @@ namespace OptionEdge.API.FlatTrade
                         LogWarning($"Connecting to {_socketUrl}");
                         
                         // Try to connect with timeout and proper exception handling
-                        var connectTask = Task.Run(() => {
+                        var connectTask = Task.Run(async () => {
                             try {
-                                _ws.Connect(_socketUrl);
+                                await _ws.ConnectAsync(_socketUrl);
                             }
                             catch (WebSocketException wsEx)
                             {
@@ -846,6 +865,12 @@ namespace OptionEdge.API.FlatTrade
                         else
                         {
                             LogWarning("Connection attempt failed");
+                            _consecutiveFailedReconnects++;
+                            
+                            if (_consecutiveFailedReconnects >= _maxConsecutiveFailedReconnects)
+                            {
+                                LogWarning($"Too many consecutive failed reconnects ({_consecutiveFailedReconnects}). Will create new WebSocket instance on next attempt.");
+                            }
                             
                             // Schedule another reconnect attempt
                             _timerTick = _interval;

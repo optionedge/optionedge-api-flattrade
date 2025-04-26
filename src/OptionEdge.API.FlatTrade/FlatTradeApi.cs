@@ -1,4 +1,4 @@
-﻿using System;
+﻿﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics.Contracts;
 using System.Globalization;
@@ -21,7 +21,10 @@ using Contract = OptionEdge.API.FlatTrade.Records.Contract;
 
 namespace OptionEdge.API.FlatTrade
 {
-    public class FlatTradeApi
+    /// <summary>
+    /// API client for FlatTrade broker
+    /// </summary>
+    public class FlatTradeApi : IDisposable
     {
         string _apiKey;
         string _apiSecret;
@@ -133,9 +136,9 @@ namespace OptionEdge.API.FlatTrade
             Action<string> onAccessTokenGenerated = null, 
             Func<string> cachedAccessTokenProvider = null)
         {
-            if (string.IsNullOrEmpty(userId)) throw new ArgumentNullException("User id required.");
-            if (string.IsNullOrEmpty(apiKey)) throw new ArgumentNullException("Api key required.");
-            if (string.IsNullOrEmpty(apiSecret)) throw new ArgumentNullException("Api secret required.");
+            if (string.IsNullOrEmpty(userId)) throw new ArgumentNullException(nameof(userId), "User id required.");
+            if (string.IsNullOrEmpty(apiKey)) throw new ArgumentNullException(nameof(apiKey), "Api key required.");
+            if (string.IsNullOrEmpty(apiSecret)) throw new ArgumentNullException(nameof(apiSecret), "Api secret required.");
 
             _apiKey = apiKey;
             _apiSecret = apiSecret;
@@ -153,6 +156,7 @@ namespace OptionEdge.API.FlatTrade
         }
 
         private Ticker _ticker;
+        private bool _disposed = false;
         public virtual Ticker CreateTicker(ILogger logger = null)
         {
             // Only single ticker instance allowed
@@ -171,49 +175,141 @@ namespace OptionEdge.API.FlatTrade
                 UserId = _userId
             };
         }
+        /// <summary>
+        /// Gets the trading limits for the user
+        /// </summary>
+        /// <returns>The limits result containing available margins and limits</returns>
+        public virtual async Task<LimitsResult> GetLimitsAsync()
+        {
+            return await ExecutePostAsync<LimitsResult>(_urls["limits"], GetBaseParams());
+        }
+        
+        /// <summary>
+        /// Gets the trading limits for the user (synchronous version)
+        /// </summary>
+        /// <returns>The limits result containing available margins and limits</returns>
         public virtual LimitsResult GetLimits()
         {
-            return ExecutePost<LimitsResult>(_urls["limits"], GetBaseParams());
-        }      
+            return GetLimitsAsync().GetAwaiter().GetResult();
+        }
 
-        public virtual HistoryDataResult[] GetHistoricalData(HistoryDataParams historyDataParams)
+        /// <summary>
+        /// Gets historical price data for a security
+        /// </summary>
+        /// <param name="historyDataParams">Parameters for the historical data request</param>
+        /// <returns>Array of historical data points</returns>
+        /// <exception cref="ArgumentNullException">Thrown when historyDataParams is null</exception>
+        public virtual async Task<HistoryDataResult[]> GetHistoricalDataAsync(HistoryDataParams historyDataParams)
         {
+            if (historyDataParams == null)
+                throw new ArgumentNullException(nameof(historyDataParams), "History data parameters cannot be null");
+                
             historyDataParams.UserId = _userId;
             historyDataParams.AccountId = _accountId;
-            return ExecutePost<HistoryDataResult[]>(_urls["info.time.price.data"], historyDataParams);           
+            return await ExecutePostAsync<HistoryDataResult[]>(_urls["info.time.price.data"], historyDataParams);
+        }
+        
+        /// <summary>
+        /// Gets historical price data for a security (synchronous version)
+        /// </summary>
+        /// <param name="historyDataParams">Parameters for the historical data request</param>
+        /// <returns>Array of historical data points</returns>
+        /// <exception cref="ArgumentNullException">Thrown when historyDataParams is null</exception>
+        public virtual HistoryDataResult[] GetHistoricalData(HistoryDataParams historyDataParams)
+        {
+            return GetHistoricalDataAsync(historyDataParams).GetAwaiter().GetResult();
         }
 
 
-        public OrderHistoryResult[] GetSingleOrderHistory(string orderNumber)
-        {            
-            return ExecutePost<OrderHistoryResult[]>(_urls["single.order.history"], new OrderHistoryParams
+        /// <summary>
+        /// Gets the history of a single order
+        /// </summary>
+        /// <param name="orderNumber">The order number to get history for</param>
+        /// <returns>Array of order history results</returns>
+        /// <exception cref="ArgumentNullException">Thrown when orderNumber is null or empty</exception>
+        public async Task<OrderHistoryResult[]> GetSingleOrderHistoryAsync(string orderNumber)
+        {
+            if (string.IsNullOrEmpty(orderNumber))
+                throw new ArgumentNullException(nameof(orderNumber), "Order number cannot be null or empty");
+                
+            return await ExecutePostAsync<OrderHistoryResult[]>(_urls["single.order.history"], new OrderHistoryParams
             {
                 UserId = _userId,
                 OrderNumber = orderNumber
             });
         }
-
-        public GetQuoteResult GetQuote(string exchange, string token)
+        
+        /// <summary>
+        /// Gets the history of a single order (synchronous version)
+        /// </summary>
+        /// <param name="orderNumber">The order number to get history for</param>
+        /// <returns>Array of order history results</returns>
+        /// <exception cref="ArgumentNullException">Thrown when orderNumber is null or empty</exception>
+        public OrderHistoryResult[] GetSingleOrderHistory(string orderNumber)
         {
-            return ExecutePost<GetQuoteResult>(_urls["get.quotes"], new GetQuoteParams
+            return GetSingleOrderHistoryAsync(orderNumber).GetAwaiter().GetResult();
+        }
+
+        /// <summary>
+        /// Gets a quote for a security
+        /// </summary>
+        /// <param name="exchange">The exchange code</param>
+        /// <param name="token">The security token</param>
+        /// <returns>Quote result</returns>
+        /// <exception cref="ArgumentNullException">Thrown when exchange or token is null or empty</exception>
+        public async Task<GetQuoteResult> GetQuoteAsync(string exchange, string token)
+        {
+            if (string.IsNullOrEmpty(exchange))
+                throw new ArgumentNullException(nameof(exchange), "Exchange cannot be null or empty");
+                
+            if (string.IsNullOrEmpty(token))
+                throw new ArgumentNullException(nameof(token), "Token cannot be null or empty");
+                
+            return await ExecutePostAsync<GetQuoteResult>(_urls["get.quotes"], new GetQuoteParams
             {
                 UserId = _userId,
                 Exchange = exchange,
                 Token = token
             });
         }
-
-        public  OrderHistoryResult GetSingleOrderHistory(string orderNumber, Func<string, bool> hasOrderStatus, int maxRetries = 5, int retryDelay = 500)
+        
+        /// <summary>
+        /// Gets a quote for a security (synchronous version)
+        /// </summary>
+        /// <param name="exchange">The exchange code</param>
+        /// <param name="token">The security token</param>
+        /// <returns>Quote result</returns>
+        /// <exception cref="ArgumentNullException">Thrown when exchange or token is null or empty</exception>
+        public GetQuoteResult GetQuote(string exchange, string token)
         {
-            int retry = 1;
+            return GetQuoteAsync(exchange, token).GetAwaiter().GetResult();
+        }
 
+        /// <summary>
+        /// Gets the history of a single order with retry logic
+        /// </summary>
+        /// <param name="orderNumber">The order number to get history for</param>
+        /// <param name="hasOrderStatus">Predicate to check if the order has the desired status</param>
+        /// <param name="maxRetries">Maximum number of retries</param>
+        /// <param name="retryDelay">Delay between retries in milliseconds</param>
+        /// <returns>Order history result matching the status predicate</returns>
+        /// <exception cref="ArgumentNullException">Thrown when orderNumber is null or empty or hasOrderStatus is null</exception>
+        public async Task<OrderHistoryResult> GetSingleOrderHistoryAsync(string orderNumber, Func<string, bool> hasOrderStatus, int maxRetries = 5, int retryDelay = 500)
+        {
+            if (string.IsNullOrEmpty(orderNumber))
+                throw new ArgumentNullException(nameof(orderNumber), "Order number cannot be null or empty");
+                
+            if (hasOrderStatus == null)
+                throw new ArgumentNullException(nameof(hasOrderStatus), "Order status predicate cannot be null");
+                
+            int retry = 1;
             OrderHistoryResult orderHistory = null;
 
             while (retry <= maxRetries)
             {
                 retry++;
 
-                var orderHistories = GetSingleOrderHistory(orderNumber);
+                var orderHistories = await GetSingleOrderHistoryAsync(orderNumber);
                 if (orderHistories != null && orderHistories.Length > 0)
                 {
                     orderHistory = orderHistories.Where(x => hasOrderStatus(x.OrderStatus)).FirstOrDefault();
@@ -221,7 +317,7 @@ namespace OptionEdge.API.FlatTrade
 
                 if (orderHistory == null)
                 {
-                    Task.Delay(retryDelay).Wait();
+                    await Task.Delay(retryDelay);
                     continue;
                 }
                 else
@@ -230,16 +326,39 @@ namespace OptionEdge.API.FlatTrade
 
             return orderHistory;
         }
-
-        public virtual PlaceOrderResult PlaceOrder(PlaceOrderParams order)
+        
+        /// <summary>
+        /// Gets the history of a single order with retry logic (synchronous version)
+        /// </summary>
+        /// <param name="orderNumber">The order number to get history for</param>
+        /// <param name="hasOrderStatus">Predicate to check if the order has the desired status</param>
+        /// <param name="maxRetries">Maximum number of retries</param>
+        /// <param name="retryDelay">Delay between retries in milliseconds</param>
+        /// <returns>Order history result matching the status predicate</returns>
+        /// <exception cref="ArgumentNullException">Thrown when orderNumber is null or empty or hasOrderStatus is null</exception>
+        public OrderHistoryResult GetSingleOrderHistory(string orderNumber, Func<string, bool> hasOrderStatus, int maxRetries = 5, int retryDelay = 500)
         {
+            return GetSingleOrderHistoryAsync(orderNumber, hasOrderStatus, maxRetries, retryDelay).GetAwaiter().GetResult();
+        }
+
+        /// <summary>
+        /// Places an order with the specified parameters
+        /// </summary>
+        /// <param name="order">The order parameters</param>
+        /// <returns>The result of the order placement</returns>
+        /// <exception cref="ArgumentNullException">Thrown when required parameters are missing</exception>
+        public virtual async Task<PlaceOrderResult> PlaceOrderAsync(PlaceOrderParams order)
+        {
+            if (order == null)
+                throw new ArgumentNullException(nameof(order), "Order parameters cannot be null");
+                
             order.UserId = _userId;
             order.AccountId = _accountId;
 
             PlaceOrderValidateRequiredArguments(order);
 
             if (string.IsNullOrEmpty(order.ProductCode))
-                throw new ArgumentNullException("Product code required.");
+                throw new ArgumentNullException(nameof(order.ProductCode), "Product code required.");
 
             if (string.IsNullOrEmpty(order.Exchange))
                 order.Exchange = Constants.EXCHANGE_NFO;
@@ -252,100 +371,215 @@ namespace OptionEdge.API.FlatTrade
 
             order.OrderSource = "API";
 
-            return ExecutePost<PlaceOrderResult>(_urls["order.place"], order);
+            return await ExecutePostAsync<PlaceOrderResult>(_urls["order.place"], order);
         }
-
-        protected virtual void PlaceOrderValidateRequiredArguments(PlaceOrderParams order)
+        
+        /// <summary>
+        /// Places an order with the specified parameters (synchronous version)
+        /// </summary>
+        /// <param name="order">The order parameters</param>
+        /// <returns>The result of the order placement</returns>
+        /// <exception cref="ArgumentNullException">Thrown when required parameters are missing</exception>
+        public virtual PlaceOrderResult PlaceOrder(PlaceOrderParams order)
         {
-            if (string.IsNullOrEmpty(order.TradingSymbol))
-                throw new ArgumentNullException("Trading symbol required.");
-
-            if (order.InstrumentToken == 0)
-                throw new ArgumentNullException("Instrument token required.");
-
-            //if (order.Quantity == 0)
-            //    throw new ArgumentNullException("Quantity required.");
-
-            if (string.IsNullOrEmpty(order.TransactionType))
-                throw new ArgumentNullException("Transaction type required.");
-
-            if (string.IsNullOrEmpty(order.PriceType))
-                throw new ArgumentNullException("Price type required.");
+            return PlaceOrderAsync(order).GetAwaiter().GetResult();
         }
 
         /// <summary>
-        /// 
+        /// Validates the required arguments for placing an order
         /// </summary>
-        /// <param name="exchange"></param>
-        /// <param name="filePath"></param>
-        /// <exception cref="DirectoryNotFoundException">File directory should exists.</exception>
-        public virtual void SaveMasterContracts(string exchange, string filePath)
+        /// <param name="order">The order parameters to validate</param>
+        /// <exception cref="ArgumentNullException">Thrown when required parameters are missing</exception>
+        protected virtual void PlaceOrderValidateRequiredArguments(PlaceOrderParams order)
         {
+            if (order == null)
+                throw new ArgumentNullException(nameof(order), "Order parameters cannot be null");
+                
+            if (string.IsNullOrEmpty(order.TradingSymbol))
+                throw new ArgumentNullException(nameof(order.TradingSymbol), "Trading symbol required.");
+
+            if (order.InstrumentToken == 0)
+                throw new ArgumentNullException(nameof(order.InstrumentToken), "Instrument token required.");
+
+            //if (order.Quantity == 0)
+            //    throw new ArgumentNullException(nameof(order.Quantity), "Quantity required.");
+
+            if (string.IsNullOrEmpty(order.TransactionType))
+                throw new ArgumentNullException(nameof(order.TransactionType), "Transaction type required.");
+
+            if (string.IsNullOrEmpty(order.PriceType))
+                throw new ArgumentNullException(nameof(order.PriceType), "Price type required.");
+        }
+
+        /// <summary>
+        /// Downloads and saves the master contracts for the specified exchange
+        /// </summary>
+        /// <param name="exchange">The exchange code (e.g., NSE, NFO)</param>
+        /// <param name="filePath">The file path to save the contracts to</param>
+        /// <exception cref="DirectoryNotFoundException">File directory should exists.</exception>
+        /// <exception cref="ArgumentNullException">Thrown when required parameters are missing</exception>
+        public virtual async Task SaveMasterContractsAsync(string exchange, string filePath)
+        {
+            if (string.IsNullOrEmpty(exchange))
+                throw new ArgumentNullException(nameof(exchange), "Exchange cannot be null or empty");
+                
+            if (string.IsNullOrEmpty(filePath))
+                throw new ArgumentNullException(nameof(filePath), "File path cannot be null or empty");
+                
+            var directory = Path.GetDirectoryName(filePath);
+            if (!Directory.Exists(directory))
+                throw new DirectoryNotFoundException($"Directory does not exist: {directory}");
+                
             if (exchange == Constants.EXCHANGE_NFO || exchange == Constants.EXCHANGE_BFO)
             {
-                SaveMasterContractsInternal(exchange + "_EQUITY", filePath);
-                SaveMasterContractsInternal(exchange + "_INDEX", filePath);
+                await SaveMasterContractsInternalAsync(exchange + "_EQUITY", filePath);
+                await SaveMasterContractsInternalAsync(exchange + "_INDEX", filePath);
             }
-
+            else
+            {
+                await SaveMasterContractsInternalAsync(exchange, filePath);
+            }
+        }
+        
+        /// <summary>
+        /// Downloads and saves the master contracts for the specified exchange (synchronous version)
+        /// </summary>
+        /// <param name="exchange">The exchange code (e.g., NSE, NFO)</param>
+        /// <param name="filePath">The file path to save the contracts to</param>
+        /// <exception cref="DirectoryNotFoundException">File directory should exists.</exception>
+        /// <exception cref="ArgumentNullException">Thrown when required parameters are missing</exception>
+        public virtual void SaveMasterContracts(string exchange, string filePath)
+        {
+            SaveMasterContractsAsync(exchange, filePath).GetAwaiter().GetResult();
         }
 
-        private void SaveMasterContractsInternal(string exchange, string filePath)
+        private async Task SaveMasterContractsInternalAsync(string exchange, string filePath)
         {
-            DownloadMasterContract(exchange, (stream) =>
+            await DownloadMasterContractAsync(exchange, async (stream) =>
             {
-                var fileStream = File.Create(filePath);
-                stream.CopyTo(fileStream);
-                fileStream.Close();
+                using (var fileStream = File.Create(filePath))
+                {
+                    await stream.CopyToAsync(fileStream);
+                }
             });
         }
-
-        protected void DownloadMasterContract(string exchange, Action<Stream> processStream)
+        
+        private void SaveMasterContractsInternal(string exchange, string filePath)
         {
-            HttpClient httpClient = new HttpClient();
-            httpClient.Timeout = new TimeSpan(0, 0, 30);
-            httpClient.DefaultRequestHeaders.Clear();
+            SaveMasterContractsInternalAsync(exchange, filePath).GetAwaiter().GetResult();
+        }
 
-            if (!_urlsContractMaster.ContainsKey(exchange)) return;
+        /// <summary>
+        /// Downloads the master contract for the specified exchange
+        /// </summary>
+        /// <param name="exchange">The exchange code</param>
+        /// <param name="processStream">Action to process the downloaded stream</param>
+        /// <exception cref="ArgumentNullException">Thrown when exchange or processStream is null</exception>
+        /// <summary>
+        /// Downloads the master contract for the specified exchange asynchronously
+        /// </summary>
+        /// <param name="exchange">The exchange code</param>
+        /// <param name="processStream">Action to process the downloaded stream</param>
+        /// <exception cref="ArgumentNullException">Thrown when exchange or processStream is null</exception>
+        protected async Task DownloadMasterContractAsync(string exchange, Func<Stream, Task> processStream)
+        {
+            if (string.IsNullOrEmpty(exchange))
+                throw new ArgumentNullException(nameof(exchange), "Exchange cannot be null or empty");
+                
+            if (processStream == null)
+                throw new ArgumentNullException(nameof(processStream), "Process stream action cannot be null");
+                
+            if (!_urlsContractMaster.ContainsKey(exchange))
+            {
+                if (_enableLogging)
+                    Utils.LogMessage($"No contract master URL found for exchange: {exchange}");
+                return;
+            }
 
             var url = _urlsContractMaster[exchange];
-
-            using (var response = httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead).Result)
+            
+            using (HttpClient httpClient = new HttpClient())
             {
-                response.EnsureSuccessStatusCode();
+                httpClient.Timeout = new TimeSpan(0, 0, 30);
+                httpClient.DefaultRequestHeaders.Clear();
 
-                var stream = response.Content.ReadAsStreamAsync().Result;
-                using (stream)
+                using (var response = await httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead))
                 {
-                    processStream.Invoke(stream);
+                    response.EnsureSuccessStatusCode();
+
+                    using (var stream = await response.Content.ReadAsStreamAsync())
+                    {
+                        await processStream(stream);
+                    }
                 }
             }
         }
-
-        public List<Contract> GetMasterContracts(string exchange)
+        
+        /// <summary>
+        /// Downloads the master contract for the specified exchange (synchronous version)
+        /// </summary>
+        /// <param name="exchange">The exchange code</param>
+        /// <param name="processStream">Action to process the downloaded stream</param>
+        /// <exception cref="ArgumentNullException">Thrown when exchange or processStream is null</exception>
+        protected void DownloadMasterContract(string exchange, Action<Stream> processStream)
         {
+            if (string.IsNullOrEmpty(exchange))
+                throw new ArgumentNullException(nameof(exchange), "Exchange cannot be null or empty");
+                
+            if (processStream == null)
+                throw new ArgumentNullException(nameof(processStream), "Process stream action cannot be null");
+                
+            DownloadMasterContractAsync(exchange, stream =>
+            {
+                processStream(stream);
+                return Task.CompletedTask;
+            }).GetAwaiter().GetResult();
+        }
+
+        /// <summary>
+        /// Gets the master contracts for the specified exchange
+        /// </summary>
+        /// <param name="exchange">The exchange code</param>
+        /// <returns>List of contracts</returns>
+        /// <exception cref="ArgumentNullException">Thrown when exchange is null or empty</exception>
+        public async Task<List<Contract>> GetMasterContractsAsync(string exchange)
+        {
+            if (string.IsNullOrEmpty(exchange))
+                throw new ArgumentNullException(nameof(exchange), "Exchange cannot be null or empty");
+                
             List<Contract> contracts = new List<Contract>(100000);
 
             if (exchange == Constants.EXCHANGE_NFO || exchange == Constants.EXCHANGE_BFO)
             {
-                contracts = GetMasterContractsInternal(exchange + "_EQUITY");
-
-                contracts.AddRange( GetMasterContractsInternal(exchange + "_INDEX"));
-            } else
+                contracts.AddRange(await GetMasterContractsInternalAsync(exchange + "_EQUITY"));
+                contracts.AddRange(await GetMasterContractsInternalAsync(exchange + "_INDEX"));
+            }
+            else
             {
-                contracts = GetMasterContractsInternal(exchange);
-
-                contracts.AddRange(GetMasterContractsInternal(exchange));
+                contracts.AddRange(await GetMasterContractsInternalAsync(exchange));
             }
             
             return contracts;
         }
+        
+        /// <summary>
+        /// Gets the master contracts for the specified exchange (synchronous version)
+        /// </summary>
+        /// <param name="exchange">The exchange code</param>
+        /// <returns>List of contracts</returns>
+        /// <exception cref="ArgumentNullException">Thrown when exchange is null or empty</exception>
+        public List<Contract> GetMasterContracts(string exchange)
+        {
+            return GetMasterContractsAsync(exchange).GetAwaiter().GetResult();
+        }
 
-        private  List<Contract> GetMasterContractsInternal(string exchange)
+        private async Task<List<Contract>> GetMasterContractsInternalAsync(string exchange)
         {
             List<Contract> contracts = new List<Contract>(999999);
-            DownloadMasterContract(exchange, (stream) =>
+            
+            await DownloadMasterContractAsync(exchange, async (stream) =>
             {
-                var streamReader = new StreamReader(stream);
+                using (var streamReader = new StreamReader(stream))
                 using (var csv = new CsvReader(streamReader, true))
                 {
                     while (csv.ReadNextRecord())
@@ -382,63 +616,244 @@ namespace OptionEdge.API.FlatTrade
 
             return contracts;
         }
-
-        public BasketMarginResult GetBasketMargin(BasketMarginParams basketMarginParams)
+        
+        /// <summary>
+        /// Gets the margin required for a basket of orders
+        /// </summary>
+        /// <param name="basketMarginParams">Basket margin parameters</param>
+        /// <returns>Basket margin result</returns>
+        /// <exception cref="ArgumentNullException">Thrown when basketMarginParams is null</exception>
+        public async Task<BasketMarginResult> GetBasketMarginAsync(BasketMarginParams basketMarginParams)
         {
+            if (basketMarginParams == null)
+                throw new ArgumentNullException(nameof(basketMarginParams), "Basket margin parameters cannot be null");
+                
             basketMarginParams.UserId = _userId;
             basketMarginParams.AccountId = _accountId;
 
-            return ExecutePost<BasketMarginResult>(_urls["basket.margin"], basketMarginParams);
+            return await ExecutePostAsync<BasketMarginResult>(_urls["basket.margin"], basketMarginParams);
+        }
+        
+        /// <summary>
+        /// Gets the margin required for a basket of orders (synchronous version)
+        /// </summary>
+        /// <param name="basketMarginParams">Basket margin parameters</param>
+        /// <returns>Basket margin result</returns>
+        /// <exception cref="ArgumentNullException">Thrown when basketMarginParams is null</exception>
+        public BasketMarginResult GetBasketMargin(BasketMarginParams basketMarginParams)
+        {
+            return GetBasketMarginAsync(basketMarginParams).GetAwaiter().GetResult();
         }
 
+        /// <summary>
+        /// Executes a POST request to the specified endpoint
+        /// </summary>
+        /// <typeparam name="T">The type of the response</typeparam>
+        /// <param name="endpoint">The endpoint to call</param>
+        /// <param name="inputParams">The input parameters</param>
+        /// <returns>The response</returns>
         public T ExecutePost<T>(string endpoint, object inputParams = null) where T : class
         {
             return Execute<T>(endpoint, inputParams, Method.Post);
         }
+        
+        /// <summary>
+        /// Executes a GET request to the specified endpoint
+        /// </summary>
+        /// <typeparam name="T">The type of the response</typeparam>
+        /// <param name="endpoint">The endpoint to call</param>
+        /// <param name="inputParams">The input parameters</param>
+        /// <returns>The response</returns>
         public T ExecuteGet<T>(string endpoint, object inputParams = null) where T : class
         {
             return Execute<T>(endpoint, inputParams, Method.Get);
         }
+        
+        /// <summary>
+        /// Executes a POST request asynchronously to the specified endpoint
+        /// </summary>
+        /// <typeparam name="T">The type of the response</typeparam>
+        /// <param name="endpoint">The endpoint to call</param>
+        /// <param name="inputParams">The input parameters</param>
+        /// <returns>The response</returns>
+        public async Task<T> ExecutePostAsync<T>(string endpoint, object inputParams = null) where T : class
+        {
+            return await ExecuteAsync<T>(endpoint, inputParams, Method.Post);
+        }
+        
+        /// <summary>
+        /// Executes a GET request asynchronously to the specified endpoint
+        /// </summary>
+        /// <typeparam name="T">The type of the response</typeparam>
+        /// <param name="endpoint">The endpoint to call</param>
+        /// <param name="inputParams">The input parameters</param>
+        /// <returns>The response</returns>
+        public async Task<T> ExecuteGetAsync<T>(string endpoint, object inputParams = null) where T : class
+        {
+            return await ExecuteAsync<T>(endpoint, inputParams, Method.Get);
+        }
 
+        /// <summary>
+        /// Executes a request to the specified endpoint
+        /// </summary>
+        /// <typeparam name="T">The type of the response</typeparam>
+        /// <param name="endpoint">The endpoint to call</param>
+        /// <param name="inputParams">The input parameters</param>
+        /// <param name="method">The HTTP method</param>
+        /// <returns>The response</returns>
         protected T Execute<T>(string endpoint, object inputParams = null, Method method = Method.Get) where T : class
         {
-            var request = new RestRequest(endpoint);
-
-            if (inputParams != null)
+            try
             {
-                request.AddBody(ToJson(inputParams) + "&" + GetKey());
+                var request = new RestRequest(endpoint);
 
-                //request.AddParameter("jData", new StringContent( content).ReadAsStringAsync().Result, ParameterType.RequestBody);
-                //request.AddParameter("jKey",_accessToken, ParameterType.RequestBody);
-                ////request.AddQueryParameter("jKey", Utils.Serialize(_accessToken));
+                if (inputParams != null)
+                {
+                    request.AddBody(ToJson(inputParams) + "&" + GetKey());
+                }
+
+                var response = _restClient.ExecuteAsync<T>(request, method).Result;
+
+                if (response != null && !string.IsNullOrEmpty(response.ErrorMessage) && _enableLogging)
+                    Utils.LogMessage($"Error executing api request. Status: {response.StatusCode}-{response.ErrorMessage}");
+
+                if (response.StatusCode == System.Net.HttpStatusCode.OK)
+                    return response.Data;
+                else
+                {
+                    var errorMessage = $@"
+                            Status Code: {response.StatusCode}
+                            Status Description: {response.StatusDescription}
+                            Content: {response.Content}
+                            Error Message: {response.ErrorMessage}
+                            Error Exception: {response.ErrorException?.Message}";
+
+                    if (_enableLogging)
+                        Utils.LogMessage(errorMessage);
+                        
+                    if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                        throw new UnauthorizedAccessException(errorMessage);
+
+                    // Create a new instance of T with Status and ErrorMessage set
+                    // instead of returning default(T)
+                    if (typeof(BaseResponseResult).IsAssignableFrom(typeof(T)))
+                    {
+                        try
+                        {
+                            // Create a new instance of T
+                            var result = Activator.CreateInstance<T>();
+                            
+                            // Set the Status and ErrorMessage properties
+                            if (result is BaseResponseResult baseResult)
+                            {
+                                baseResult.Status = Constants.STATUS_NOT_OK;
+                                baseResult.ErrorMessage = response.ErrorMessage ?? errorMessage;
+                            }
+                            
+                            return result;
+                        }
+                        catch (Exception ex)
+                        {
+                            if (_enableLogging)
+                                Utils.LogMessage($"Error creating instance of {typeof(T).Name}: {ex.Message}");
+                        }
+                    }
+
+                    return default(T);
+                }
             }
-
-            var response = _restClient.ExecuteAsync<T>(request, method).Result;
-
-            if (response != null && !string.IsNullOrEmpty(response.ErrorMessage) && _enableLogging)
-                Utils.LogMessage($"Error executing api request. Status: {response.StatusCode}-{response.ErrorMessage}");
-
-
-            if (response.StatusCode == System.Net.HttpStatusCode.OK)
-                return response.Data;
-            else
+            catch (Exception ex)
             {
-                var errorMessage = $@"
-                        Status Code: {response.StatusCode}
-                        Status Description: {response.StatusDescription}
-                        Content: {response.Content}
-                        Error Message: {response.ErrorMessage}
-                        Error Exception: {response.ErrorException?.Message}";
-
                 if (_enableLogging)
-                    Utils.LogMessage(errorMessage);
-                if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-                    throw new UnauthorizedAccessException(errorMessage);
-
-                return default(T);
+                    Utils.LogMessage($"Exception in Execute: {ex.Message}");
+                    
+                throw;
             }
         }
 
+        /// <summary>
+        /// Executes a request asynchronously to the specified endpoint
+        /// </summary>
+        /// <typeparam name="T">The type of the response</typeparam>
+        /// <param name="endpoint">The endpoint to call</param>
+        /// <param name="inputParams">The input parameters</param>
+        /// <param name="method">The HTTP method</param>
+        /// <returns>The response</returns>
+        protected async Task<T> ExecuteAsync<T>(string endpoint, object inputParams = null, Method method = Method.Get) where T : class
+        {
+            try
+            {
+                var request = new RestRequest(endpoint);
+
+                if (inputParams != null)
+                {
+                    request.AddBody(ToJson(inputParams) + "&" + GetKey());
+                }
+
+                var response = await _restClient.ExecuteAsync<T>(request, method);
+
+                if (response != null && !string.IsNullOrEmpty(response.ErrorMessage) && _enableLogging)
+                    Utils.LogMessage($"Error executing api request. Status: {response.StatusCode}-{response.ErrorMessage}");
+
+                if (response.StatusCode == System.Net.HttpStatusCode.OK)
+                    return response.Data;
+                else
+                {
+                    var errorMessage = $@"
+                            Status Code: {response.StatusCode}
+                            Status Description: {response.StatusDescription}
+                            Content: {response.Content}
+                            Error Message: {response.ErrorMessage}
+                            Error Exception: {response.ErrorException?.Message}";
+
+                    if (_enableLogging)
+                        Utils.LogMessage(errorMessage);
+                        
+                    if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                        throw new UnauthorizedAccessException(errorMessage);
+
+                    // Create a new instance of T with Status and ErrorMessage set
+                    // instead of returning default(T)
+                    if (typeof(BaseResponseResult).IsAssignableFrom(typeof(T)))
+                    {
+                        try
+                        {
+                            // Create a new instance of T
+                            var result = Activator.CreateInstance<T>();
+                            
+                            // Set the Status and ErrorMessage properties
+                            if (result is BaseResponseResult baseResult)
+                            {
+                                baseResult.Status = Constants.STATUS_NOT_OK;
+                                baseResult.ErrorMessage = response.ErrorMessage ?? errorMessage;
+                            }
+                            
+                            return result;
+                        }
+                        catch (Exception ex)
+                        {
+                            if (_enableLogging)
+                                Utils.LogMessage($"Error creating instance of {typeof(T).Name}: {ex.Message}");
+                        }
+                    }
+
+                    return default(T);
+                }
+            }
+            catch (Exception ex)
+            {
+                if (_enableLogging)
+                    Utils.LogMessage($"Exception in ExecuteAsync: {ex.Message}");
+                    
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Converts an object to JSON with the jData prefix
+        /// </summary>
+        /// <param name="data">The object to convert</param>
+        /// <returns>JSON string with prefix</returns>
         private string ToJson(object data)
         {
             string json = JsonConvert.SerializeObject(data, new JsonSerializerSettings() { NullValueHandling = NullValueHandling.Ignore });
@@ -451,58 +866,104 @@ namespace OptionEdge.API.FlatTrade
             return "jKey=" + _accessToken;
         }
 
+        /// <summary>
+        /// Sets the access token for API requests
+        /// </summary>
+        /// <param name="accessToken">The access token</param>
+        /// <exception cref="ArgumentNullException">Thrown when accessToken is null or empty</exception>
         public void SetAccessToken(string accessToken)
         {
+            if (string.IsNullOrEmpty(accessToken))
+                throw new ArgumentNullException(nameof(accessToken), "Access token cannot be null or empty");
+                
             _accessToken = accessToken;
         }
 
+        /// <summary>
+        /// Refreshes the access token using the provided request code
+        /// </summary>
+        /// <param name="requestCode">The request code obtained from the authentication flow</param>
+        /// <returns>The response containing the new access token or error information</returns>
+        /// <exception cref="ArgumentNullException">Thrown when requestCode is null or empty</exception>
         public async Task<RefreshTokenResponse> RefreshAccessToken(string requestCode)
         {
+            if (string.IsNullOrEmpty(requestCode))
+                throw new ArgumentNullException(nameof(requestCode), "Request code cannot be null or empty");
+                
             var response = new RefreshTokenResponse
             {
                 Status = Constants.STATUS_NOT_OK
             };
 
             var options = new RestClientOptions(_urls["auth.token.url"]);
-            var restClient = new RestClient(options);
-
-            var request = new RestRequest();
-
-            var apiSecretSHA256 = Utils.GetSHA256($"{_apiKey}{requestCode}{_apiSecret}");
-
-            var apiTokenParams = new ApiTokenParams
+            using (var restClient = new RestClient(options))
             {
-                ApiKey = _apiKey,
-                RequestCode = requestCode,
-                ApiSecret = apiSecretSHA256,
-            };
+                var request = new RestRequest();
 
-            request.AddStringBody(JsonConvert.SerializeObject(apiTokenParams), ContentType.Json);
+                var apiSecretSHA256 = Utils.GetSHA256($"{_apiKey}{requestCode}{_apiSecret}");
 
-            try
-            {
-                var apiTokenResult = await restClient.PostAsync<APITokenResult>(request);
+                var apiTokenParams = new ApiTokenParams
+                {
+                    ApiKey = _apiKey,
+                    RequestCode = requestCode,
+                    ApiSecret = apiSecretSHA256,
+                };
 
-                if (apiTokenResult.Status == Constants.API_RESPONSE_STATUS_Not_OK)
+                request.AddStringBody(JsonConvert.SerializeObject(apiTokenParams), ContentType.Json);
+
+                try
+                {
+                    var apiTokenResult = await restClient.PostAsync<APITokenResult>(request);
+
+                    if (apiTokenResult.Status == Constants.API_RESPONSE_STATUS_Not_OK)
+                    {
+                        response.Status = Constants.STATUS_NOT_OK;
+                        response.Message = $"Unable to get access token: {apiTokenResult.Status}, Error Message: {apiTokenResult.ErrorMessage}";
+                        return response;
+                    }
+
+                    _accessToken = apiTokenResult?.Token;
+
+                    response.Status = Constants.STATUS_OK;
+                    response.AccessToken = _accessToken;
+                }
+                catch (Exception ex)
                 {
                     response.Status = Constants.STATUS_NOT_OK;
-                    response.Message = $"Unable to get access token: {apiTokenResult.Status}, Error Message: {apiTokenResult.ErrorMessage}";
+                    response.Message = $"Error getting FlatTrade access token, Error Message: {ex.Message}";
+                    if (_enableLogging)
+                        Utils.LogMessage($"Error refreshing access token: {ex.Message}");
                 }
-
-                if (restClient != null) restClient.Dispose();
-
-                _accessToken = apiTokenResult?.Token;
-
-                response.Status = Constants.STATUS_OK;
-                response.AccessToken = _accessToken;
-            }
-            catch (Exception ex)
-            {
-                response.Status = Constants.STATUS_NOT_OK;
-                response.Message = $"Error getting FlatTrade access token, Error Message: {ex.Message}";
             }
 
             return response;
+        }
+
+        /// <summary>
+        /// Disposes the resources used by the FlatTradeApi client
+        /// </summary>
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+        
+        /// <summary>
+        /// Disposes the resources used by the FlatTradeApi client
+        /// </summary>
+        /// <param name="disposing">True if disposing managed resources</param>
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!_disposed)
+            {
+                if (disposing)
+                {
+                    _restClient?.Dispose();
+                    _ticker?.Dispose();
+                }
+                
+                _disposed = true;
+            }
         }
     }
 }
