@@ -33,29 +33,44 @@ namespace OptionEdge.API.FlatTrade
         string _accessToken;
 
         bool _enableLogging;
+        
+        // Rate limiting configuration
+        private readonly int _maxConcurrentRequests;
+        private readonly SemaphoreSlim _throttler;
+        private readonly Queue<TaskCompletionSource<bool>> _requestQueue;
+        
+        // Per-second rate limiting
+        private int _requestsThisSecond;
+        private readonly object _requestsPerSecondLock = new object();
+        private System.Timers.Timer _requestsPerSecondTimer;
 
         protected readonly RestClient _restClient;
 
         public FlatTradeApi()
         {
-
+            // Initialize with default values
+            _maxConcurrentRequests = 5;
+            _throttler = new SemaphoreSlim(_maxConcurrentRequests, _maxConcurrentRequests);
+            _requestQueue = new Queue<TaskCompletionSource<bool>>();
         }
 
         public static FlatTradeApi CreateInstance(
-            string userId, 
-            string accountId, 
-            string apiKey, 
-            string apiSecret, 
-            string baseUrlTrade = "", 
-            bool enableLogging = false)
+            string userId,
+            string accountId,
+            string apiKey,
+            string apiSecret,
+            string baseUrlTrade = "",
+            bool enableLogging = false,
+            int maxConcurrentRequests = 5)
         {
             return new FlatTradeApi(
-                userId, 
-                accountId, 
+                userId,
+                accountId,
                 apiKey,
                 apiSecret,
-                baseUrlTrade, 
-                enableLogging);  
+                baseUrlTrade,
+                enableLogging,
+                maxConcurrentRequests: maxConcurrentRequests);
         }
 
         readonly Dictionary<string, string> _urls = new Dictionary<string, string>
@@ -127,18 +142,23 @@ namespace OptionEdge.API.FlatTrade
         };
 
         private FlatTradeApi (
-            string userId, 
-            string accountId, 
-            string apiKey, 
-            string apiSecret, 
-            string baseUrlTrade = "", 
-            bool enableLogging = false, 
-            Action<string> onAccessTokenGenerated = null, 
-            Func<string> cachedAccessTokenProvider = null)
+            string userId,
+            string accountId,
+            string apiKey,
+            string apiSecret,
+            string baseUrlTrade = "",
+            bool enableLogging = false,
+            Action<string> onAccessTokenGenerated = null,
+            Func<string> cachedAccessTokenProvider = null,
+            int maxConcurrentRequests = 30)
         {
             if (string.IsNullOrEmpty(userId)) throw new ArgumentNullException(nameof(userId), "User id required.");
             if (string.IsNullOrEmpty(apiKey)) throw new ArgumentNullException(nameof(apiKey), "Api key required.");
             if (string.IsNullOrEmpty(apiSecret)) throw new ArgumentNullException(nameof(apiSecret), "Api secret required.");
+            if (maxConcurrentRequests <= 0) {
+                maxConcurrentRequests = 30;
+                if (enableLogging) Utils.LogMessage("Max concurrent requests set to default value of 30.");
+            }
 
             _apiKey = apiKey;
             _apiSecret = apiSecret;
@@ -146,6 +166,18 @@ namespace OptionEdge.API.FlatTrade
             _accountId = accountId;
 
             _enableLogging = enableLogging;
+            
+            // Initialize rate limiting components
+            _maxConcurrentRequests = maxConcurrentRequests;
+            _throttler = new SemaphoreSlim(maxConcurrentRequests, maxConcurrentRequests);
+            _requestQueue = new Queue<TaskCompletionSource<bool>>();
+            
+            // Initialize per-second rate limiting
+            _requestsThisSecond = 0;
+            _requestsPerSecondTimer = new System.Timers.Timer(1000); // 1 second
+            _requestsPerSecondTimer.Elapsed += (sender, e) => ResetRequestsPerSecond();
+            _requestsPerSecondTimer.AutoReset = true;
+            _requestsPerSecondTimer.Start();
 
             if (!string.IsNullOrEmpty(baseUrlTrade))
                 _urls["baseUrlTrade"] = baseUrlTrade;
@@ -781,6 +813,56 @@ namespace OptionEdge.API.FlatTrade
         /// <returns>The response</returns>
         protected async Task<T> ExecuteAsync<T>(string endpoint, object inputParams = null, Method method = Method.Get) where T : class
         {
+            // Check if we've reached the per-second limit
+            bool waitForNextSecond = false;
+            
+            lock (_requestsPerSecondLock)
+            {
+                if (_requestsThisSecond >= _maxConcurrentRequests)
+                {
+                    waitForNextSecond = true;
+                    
+                    if (_enableLogging)
+                        Utils.LogMessage($"Rate limit reached for this second. Waiting for next second.");
+                }
+                else
+                {
+                    _requestsThisSecond++;
+                    
+                    if (_enableLogging)
+                        Utils.LogMessage($"Request count for this second: {_requestsThisSecond}/{_maxConcurrentRequests}");
+                }
+            }
+            
+            if (waitForNextSecond)
+            {
+                // Wait until the next second
+                await Task.Delay(1000);
+                
+                // Recursively call this method to try again
+                return await ExecuteAsync<T>(endpoint, inputParams, method);
+            }
+            
+            // Try to acquire a semaphore slot immediately
+            bool acquired = _throttler.Wait(0);
+            
+            if (!acquired)
+            {
+                // If no slot is available, queue the request
+                var tcs = new TaskCompletionSource<bool>();
+                
+                lock (_requestQueue)
+                {
+                    _requestQueue.Enqueue(tcs);
+                    
+                    if (_enableLogging)
+                        Utils.LogMessage($"Request queued. Current queue size: {_requestQueue.Count}");
+                }
+                
+                // Wait for a signal that a slot is available
+                await tcs.Task;
+            }
+            
             try
             {
                 var request = new RestRequest(endpoint);
@@ -791,6 +873,9 @@ namespace OptionEdge.API.FlatTrade
                 }
 
                 var response = await _restClient.ExecuteAsync<T>(request, method);
+                
+                // Process the next queued request if any
+                ProcessNextQueuedRequest();
 
                 if (response != null && !string.IsNullOrEmpty(response.ErrorMessage) && _enableLogging)
                     Utils.LogMessage($"Error executing api request. Status: {response.StatusCode}-{response.ErrorMessage}");
@@ -846,6 +931,51 @@ namespace OptionEdge.API.FlatTrade
                     Utils.LogMessage($"Exception in ExecuteAsync: {ex.Message}");
                     
                 throw;
+            }
+            finally
+            {
+                // Release the semaphore slot if an exception occurs
+                if (_throttler.CurrentCount == 0 && _requestQueue.Count == 0)
+                {
+                    _throttler.Release();
+                }
+            }
+        }
+        
+        /// <summary>
+        /// Processes the next request in the queue if any
+        /// </summary>
+        private void ProcessNextQueuedRequest()
+        {
+            lock (_requestQueue)
+            {
+                if (_requestQueue.Count > 0)
+                {
+                    // Get the next request from the queue
+                    var nextRequest = _requestQueue.Dequeue();
+                    
+                    // Complete the task to signal that it can proceed
+                    nextRequest.SetResult(true);
+                }
+                else
+                {
+                    // If no requests are queued, release the semaphore
+                    _throttler.Release();
+                }
+            }
+        }
+        
+        /// <summary>
+        /// Resets the per-second request counter
+        /// </summary>
+        private void ResetRequestsPerSecond()
+        {
+            lock (_requestsPerSecondLock)
+            {
+                if (_enableLogging && _requestsThisSecond > 0)
+                    Utils.LogMessage($"Resetting request counter. Processed {_requestsThisSecond} requests in the last second.");
+                
+                _requestsThisSecond = 0;
             }
         }
 
@@ -960,6 +1090,9 @@ namespace OptionEdge.API.FlatTrade
                 {
                     _restClient?.Dispose();
                     _ticker?.Dispose();
+                    _throttler?.Dispose();
+                    _requestsPerSecondTimer?.Stop();
+                    _requestsPerSecondTimer?.Dispose();
                 }
                 
                 _disposed = true;
