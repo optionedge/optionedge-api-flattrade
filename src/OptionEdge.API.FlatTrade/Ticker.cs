@@ -980,7 +980,7 @@ namespace OptionEdge.API.FlatTrade
                         }
                         
                         LogInformation($"Next reconnect attempt in {_timerTick} seconds if needed");
-                        _timer.Start();
+                        _timer?.Start();
                     }
                 }
             }

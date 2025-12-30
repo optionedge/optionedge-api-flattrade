@@ -628,7 +628,7 @@ namespace OptionEdge.API.FlatTrade
                                 Instrument = csv.HasHeader("Instrument") ? csv["Instrument"] : null,
                                 Expiry = csv.HasHeader("Expiry") && !string.IsNullOrEmpty(csv["Expiry"]) ? DateTime.Parse(csv["Expiry"]) : default(DateTime?),
                                 Strike = csv.HasHeader("Strike") && !string.IsNullOrEmpty(csv["Strike"]) ? decimal.Parse(csv["Strike"]) : 0.0m,
-                                OptionType = csv.HasHeader("OptionType") ? csv["OptionType"] : null,
+                                OptionType = csv.HasHeader("OptionType") ? csv["OptionType"] : null
                             };
 
                             if (string.IsNullOrEmpty(contract.TradingSymbol))
@@ -813,55 +813,37 @@ namespace OptionEdge.API.FlatTrade
         /// <returns>The response</returns>
         protected async Task<T> ExecuteAsync<T>(string endpoint, object inputParams = null, Method method = Method.Get) where T : class
         {
-            // Check if we've reached the per-second limit
-            bool waitForNextSecond = false;
-            
-            lock (_requestsPerSecondLock)
+            // Wait until we can proceed with the request (per-second rate limiting)
+            while (true)
             {
-                if (_requestsThisSecond >= _maxConcurrentRequests)
-                {
-                    waitForNextSecond = true;
-                    
-                    if (_enableLogging)
-                        Utils.LogMessage($"Rate limit reached for this second. Waiting for next second.");
-                }
-                else
-                {
-                    _requestsThisSecond++;
-                    
-                    if (_enableLogging)
-                        Utils.LogMessage($"Request count for this second: {_requestsThisSecond}/{_maxConcurrentRequests}");
-                }
-            }
-            
-            if (waitForNextSecond)
-            {
-                // Wait until the next second
-                await Task.Delay(1000);
+                bool canProceed = false;
                 
-                // Recursively call this method to try again
-                return await ExecuteAsync<T>(endpoint, inputParams, method);
-            }
-            
-            // Try to acquire a semaphore slot immediately
-            bool acquired = _throttler.Wait(0);
-            
-            if (!acquired)
-            {
-                // If no slot is available, queue the request
-                var tcs = new TaskCompletionSource<bool>();
-                
-                lock (_requestQueue)
+                lock (_requestsPerSecondLock)
                 {
-                    _requestQueue.Enqueue(tcs);
-                    
-                    if (_enableLogging)
-                        Utils.LogMessage($"Request queued. Current queue size: {_requestQueue.Count}");
+                    if (_requestsThisSecond < _maxConcurrentRequests)
+                    {
+                        _requestsThisSecond++;
+                        canProceed = true;
+                        
+                        if (_enableLogging)
+                            Utils.LogMessage($"Request count for this second: {_requestsThisSecond}/{_maxConcurrentRequests}");
+                    }
+                    else
+                    {
+                        if (_enableLogging)
+                            Utils.LogMessage($"Rate limit reached for this second ({_requestsThisSecond}/{_maxConcurrentRequests}). Waiting...");
+                    }
                 }
                 
-                // Wait for a signal that a slot is available
-                await tcs.Task;
+                if (canProceed)
+                    break;
+                
+                // Wait a short time before checking again (timer will reset counter every second)
+                await Task.Delay(100);
             }
+            
+            // Wait for a semaphore slot (concurrent request throttling)
+            await _throttler.WaitAsync();
             
             try
             {
@@ -873,9 +855,6 @@ namespace OptionEdge.API.FlatTrade
                 }
 
                 var response = await _restClient.ExecuteAsync<T>(request, method);
-                
-                // Process the next queued request if any
-                ProcessNextQueuedRequest();
 
                 if (response != null && !string.IsNullOrEmpty(response.ErrorMessage) && _enableLogging)
                     Utils.LogMessage($"Error executing api request. Status: {response.StatusCode}-{response.ErrorMessage}");
@@ -934,36 +913,11 @@ namespace OptionEdge.API.FlatTrade
             }
             finally
             {
-                // Release the semaphore slot if an exception occurs
-                if (_throttler.CurrentCount == 0 && _requestQueue.Count == 0)
-                {
-                    _throttler.Release();
-                }
+                // Always release the semaphore slot
+                _throttler.Release();
             }
         }
         
-        /// <summary>
-        /// Processes the next request in the queue if any
-        /// </summary>
-        private void ProcessNextQueuedRequest()
-        {
-            lock (_requestQueue)
-            {
-                if (_requestQueue.Count > 0)
-                {
-                    // Get the next request from the queue
-                    var nextRequest = _requestQueue.Dequeue();
-                    
-                    // Complete the task to signal that it can proceed
-                    nextRequest.SetResult(true);
-                }
-                else
-                {
-                    // If no requests are queued, release the semaphore
-                    _throttler.Release();
-                }
-            }
-        }
         
         /// <summary>
         /// Resets the per-second request counter

@@ -71,5 +71,10 @@ namespace OptionEdge.API.FlatTrade.Records
         [JsonPropertyName("ltt")]
         public string LastTradedTime { get; set; }
 
+        [JsonPropertyName("bp1")]
+        public string BestBuyPrice { get; set; }
+
+        [JsonPropertyName("sp1")]
+        public string BestSellPrice { get; set; }
     }
 }
