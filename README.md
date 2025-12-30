@@ -44,9 +44,8 @@ This version has breaking changes from previous version
 5. GetQuote BestBidPrice and BestAskPrice fields added
 6. Executed code refactoring to fix per second limit
 
-1. 
 ```
-Install-Package OptionEdge.API.FlatTrade -Version 3.0.0
+Install-Package OptionEdge.API.FlatTrade -Version 3.0.1
 ```
 
 ## Sample project
