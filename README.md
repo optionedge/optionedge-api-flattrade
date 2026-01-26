@@ -35,17 +35,16 @@ While creating the instance of FlatTrade REST Api Client set enable logging para
 
 ## Install library
 
-## BREAKING CHANGES V3.0.1
-This version has breaking changes from previous version
-1. Added rate limit check
-2. Added async processing of broker api
-3. Error handling
-4. Socker reconnection handling
-5. GetQuote BestBidPrice and BestAskPrice fields added
-6. Executed code refactoring to fix per second limit
+## BREAKING CHANGES V3.0.2
+Added support for FlatTrade V2 API endpoints. 
+
+New FlatTrade API & Ticker added to support V2 endpoints.
+
+FlatTradeApiV2
+TickerV2
 
 ```
-Install-Package OptionEdge.API.FlatTrade -Version 3.0.1
+Install-Package OptionEdge.API.FlatTrade -Version 3.0.2
 ```
 
 ## Sample project
