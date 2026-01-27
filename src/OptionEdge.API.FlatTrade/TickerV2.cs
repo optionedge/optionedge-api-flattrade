@@ -19,7 +19,7 @@ namespace OptionEdge.API.FlatTrade
         private string _userId;
         private string _accessToken;
 
-        private string _socketUrl = "wss://ws1.FlatTradeonline.com/NorenWS";
+        private string _socketUrl = "wss://piconnect.flattrade.in/PiConnectWSAPI/";
         private bool _isReconnect = false;
         private int _interval = 5;
         private int _retries = 50;
@@ -109,7 +109,7 @@ namespace OptionEdge.API.FlatTrade
             _logger = logger;
 
             if (string.IsNullOrEmpty(socketUrl))
-                _socketUrl = "wss://ws1.FlatTradeonline.com/NorenWS";
+                _socketUrl = "wss://piconnect.flattrade.in/PiConnectWSAPI/";
             else
                 _socketUrl = socketUrl;
 
@@ -700,8 +700,8 @@ namespace OptionEdge.API.FlatTrade
                     // Reset failure counter on successful message
                     _consecutiveHealthCheckFailures = 0;
                     
-                    // 'ck' represents connect acknowledgement
-                    if (tick.ResponseType == "ck")
+                    // 'ak' represents connect acknowledgement in V2 API
+                    if (tick.ResponseType == "ak")
                     {
                         lock (_tickLock)
                         {
@@ -720,11 +720,21 @@ namespace OptionEdge.API.FlatTrade
                     }
                     else if (tick.ResponseType == "tk" || tick.ResponseType == "dk")
                     {
+                        // Subscription acknowledgement
+                        if (_debug)
+                            LogInformation($"Subscription acknowledgement received: {tick.ResponseType}");
                         OnTick?.Invoke(tick);
                     }
                     else if (tick.ResponseType == "tf" || tick.ResponseType == "df")
                     {
+                        // Market data feed
                         OnTick?.Invoke(tick);
+                    }
+                    else if (tick.ResponseType == "uk" || tick.ResponseType == "udk")
+                    {
+                        // Unsubscribe acknowledgement
+                        if (_debug)
+                            LogInformation($"Unsubscribe acknowledgement received: {tick.ResponseType}");
                     }
                     else
                     {
